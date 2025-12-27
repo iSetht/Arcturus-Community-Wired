@@ -18,7 +18,7 @@ class DatabasePool {
             databaseConfiguration.addDataSourceProperty("databaseName", config.getValue("db.database", "habbo"));
             databaseConfiguration.addDataSourceProperty("user", config.getValue("db.username"));
             databaseConfiguration.addDataSourceProperty("password", config.getValue("db.password"));
-            databaseConfiguration.addDataSourceProperty("dataSource.logger", "com.mysql.jdbc.log.StandardLogger");
+            databaseConfiguration.addDataSourceProperty("dataSource.logger", "com.mysql.cj.log.StandardLogger");
             databaseConfiguration.addDataSourceProperty("dataSource.logSlowQueries", "true");
             databaseConfiguration.addDataSourceProperty("dataSource.dumpQueriesOnException", "true");
             databaseConfiguration.addDataSourceProperty("prepStmtCacheSize", "500");
