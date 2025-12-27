@@ -50,6 +50,9 @@ public class WiredEffectMatchFurni extends InteractionWiredEffect implements Int
         if(this.settings.isEmpty())
             return true;
 
+        if (room.getLayout() == null)
+            return false;
+
         for (WiredMatchFurniSetting setting : this.settings) {
             HabboItem item = room.getHabboItem(setting.item_id);
             if (item != null) {
@@ -61,6 +64,7 @@ public class WiredEffectMatchFurni extends InteractionWiredEffect implements Int
                 }
 
                 RoomTile oldLocation = room.getLayout().getTile(item.getX(), item.getY());
+                if (oldLocation == null) continue;
                 double oldZ = item.getZ();
 
                 if(this.direction && !this.position) {

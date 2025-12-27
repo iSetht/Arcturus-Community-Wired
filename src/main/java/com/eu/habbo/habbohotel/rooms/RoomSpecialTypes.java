@@ -253,7 +253,13 @@ public class RoomSpecialTypes {
     }
 
     public THashSet<InteractionWiredTrigger> getTriggers(WiredTriggerType type) {
-        return this.wiredTriggers.get(type);
+        synchronized (this.wiredTriggers) {
+            THashSet<InteractionWiredTrigger> triggers = this.wiredTriggers.get(type);
+            if (triggers == null) {
+                return new THashSet<>(0);
+            }
+            return new THashSet<>(triggers);
+        }
     }
 
     public THashSet<InteractionWiredTrigger> getTriggers(int x, int y) {
@@ -282,9 +288,12 @@ public class RoomSpecialTypes {
 
     public void removeTrigger(InteractionWiredTrigger trigger) {
         synchronized (this.wiredTriggers) {
-            this.wiredTriggers.get(trigger.getType()).remove(trigger);
+            THashSet<InteractionWiredTrigger> triggers = this.wiredTriggers.get(trigger.getType());
+            if (triggers == null) return;
+            
+            triggers.remove(trigger);
 
-            if (this.wiredTriggers.get(trigger.getType()).isEmpty()) {
+            if (triggers.isEmpty()) {
                 this.wiredTriggers.remove(trigger.getType());
             }
         }
@@ -317,7 +326,13 @@ public class RoomSpecialTypes {
     }
 
     public THashSet<InteractionWiredEffect> getEffects(WiredEffectType type) {
-        return this.wiredEffects.get(type);
+        synchronized (this.wiredEffects) {
+            THashSet<InteractionWiredEffect> effects = this.wiredEffects.get(type);
+            if (effects == null) {
+                return new THashSet<>(0);
+            }
+            return new THashSet<>(effects);
+        }
     }
 
     public THashSet<InteractionWiredEffect> getEffects(int x, int y) {
@@ -346,9 +361,12 @@ public class RoomSpecialTypes {
 
     public void removeEffect(InteractionWiredEffect effect) {
         synchronized (this.wiredEffects) {
-            this.wiredEffects.get(effect.getType()).remove(effect);
+            THashSet<InteractionWiredEffect> effects = this.wiredEffects.get(effect.getType());
+            if (effects == null) return;
+            
+            effects.remove(effect);
 
-            if (this.wiredEffects.get(effect.getType()).isEmpty()) {
+            if (effects.isEmpty()) {
                 this.wiredEffects.remove(effect.getType());
             }
         }
@@ -382,7 +400,11 @@ public class RoomSpecialTypes {
 
     public THashSet<InteractionWiredCondition> getConditions(WiredConditionType type) {
         synchronized (this.wiredConditions) {
-            return this.wiredConditions.get(type);
+            THashSet<InteractionWiredCondition> conditions = this.wiredConditions.get(type);
+            if (conditions == null) {
+                return new THashSet<>(0);
+            }
+            return new THashSet<>(conditions);
         }
     }
 
@@ -412,9 +434,12 @@ public class RoomSpecialTypes {
 
     public void removeCondition(InteractionWiredCondition condition) {
         synchronized (this.wiredConditions) {
-            this.wiredConditions.get(condition.getType()).remove(condition);
+            THashSet<InteractionWiredCondition> conditions = this.wiredConditions.get(condition.getType());
+            if (conditions == null) return;
+            
+            conditions.remove(condition);
 
-            if (this.wiredConditions.get(condition.getType()).isEmpty()) {
+            if (conditions.isEmpty()) {
                 this.wiredConditions.remove(condition.getType());
             }
         }

@@ -70,10 +70,12 @@ public class WiredEffectMoveFurniTo extends InteractionWiredEffect {
 
     @Override
     public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        if (room == null || room.getLayout() == null) return false;
+        
         List<HabboItem> items = new ArrayList<>();
 
         for (HabboItem item : this.items) {
-            if (Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null)
+            if (item == null || Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null)
                 items.add(item);
         }
 
@@ -100,7 +102,10 @@ public class WiredEffectMoveFurniTo extends InteractionWiredEffect {
                         RoomTile objectTile = room.getLayout().getTile(targetItem.getX(), targetItem.getY());
 
                         if (objectTile != null) {
-                            THashSet<RoomTile> refreshTiles = room.getLayout().getTilesAt(room.getLayout().getTile(((HabboItem) object).getX(), ((HabboItem) object).getY()), ((HabboItem) object).getBaseItem().getWidth(), ((HabboItem) object).getBaseItem().getLength(), ((HabboItem) object).getRotation());
+                            RoomTile sourceTile = room.getLayout().getTile(((HabboItem) object).getX(), ((HabboItem) object).getY());
+                            if (sourceTile == null) continue;
+                            
+                            THashSet<RoomTile> refreshTiles = room.getLayout().getTilesAt(sourceTile, ((HabboItem) object).getBaseItem().getWidth(), ((HabboItem) object).getBaseItem().getLength(), ((HabboItem) object).getRotation());
 
                             RoomTile tile = room.getLayout().getTileInFront(objectTile, this.direction, indexOffset);
                             if (tile == null || !tile.getAllowStack()) {
@@ -113,7 +118,11 @@ public class WiredEffectMoveFurniTo extends InteractionWiredEffect {
                             }
 
                             room.sendComposer(new FloorItemOnRollerComposer((HabboItem) object, null, tile, tile.getStackHeight() - ((HabboItem) object).getZ(), room).compose());
-                            refreshTiles.addAll(room.getLayout().getTilesAt(room.getLayout().getTile(((HabboItem) object).getX(), ((HabboItem) object).getY()), ((HabboItem) object).getBaseItem().getWidth(), ((HabboItem) object).getBaseItem().getLength(), ((HabboItem) object).getRotation()));
+                            
+                            RoomTile newSourceTile = room.getLayout().getTile(((HabboItem) object).getX(), ((HabboItem) object).getY());
+                            if (newSourceTile != null) {
+                                refreshTiles.addAll(room.getLayout().getTilesAt(newSourceTile, ((HabboItem) object).getBaseItem().getWidth(), ((HabboItem) object).getBaseItem().getLength(), ((HabboItem) object).getRotation()));
+                            }
                             room.updateTiles(refreshTiles);
                             this.indexOffset.put(targetItem.getId(), indexOffset);
                         }

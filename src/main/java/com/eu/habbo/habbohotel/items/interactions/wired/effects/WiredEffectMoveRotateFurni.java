@@ -198,7 +198,10 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
 
         this.items.clear();
         for (int i = 0; i < count; i++) {
-            this.items.add(room.getHabboItem(settings.getFurniIds()[i]));
+            HabboItem item = room.getHabboItem(settings.getFurniIds()[i]);
+            if (item != null) {
+                this.items.add(item);
+            }
         }
 
         this.setDelay(settings.getDelay());

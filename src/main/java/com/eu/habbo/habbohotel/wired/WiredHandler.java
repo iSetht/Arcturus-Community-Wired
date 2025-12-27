@@ -72,12 +72,18 @@ public class WiredHandler {
         if (triggers == null || triggers.isEmpty())
             return false;
 
+        if (room.getLayout() == null)
+            return false;
+
         long millis = System.currentTimeMillis();
         THashSet<InteractionWiredEffect> effectsToExecute = new THashSet<InteractionWiredEffect>();
 
         List<RoomTile> triggeredTiles = new ArrayList<>();
         for (InteractionWiredTrigger trigger : triggers) {
+            if (trigger == null) continue;
+            
             RoomTile tile = room.getLayout().getTile(trigger.getX(), trigger.getY());
+            if (tile == null) continue;
 
             if (triggeredTiles.contains(tile))
                 continue;
@@ -119,6 +125,9 @@ public class WiredHandler {
         if (triggers == null || triggers.isEmpty())
             return false;
 
+        if (room.getLayout() == null)
+            return false;
+
         long millis = System.currentTimeMillis();
         THashSet<InteractionWiredEffect> effectsToExecute = new THashSet<InteractionWiredEffect>();
 
@@ -127,6 +136,7 @@ public class WiredHandler {
             if (trigger.getClass() != triggerType) continue;
 
             RoomTile tile = room.getLayout().getTile(trigger.getX(), trigger.getY());
+            if (tile == null) continue;
 
             if (triggeredTiles.contains(tile))
                 continue;

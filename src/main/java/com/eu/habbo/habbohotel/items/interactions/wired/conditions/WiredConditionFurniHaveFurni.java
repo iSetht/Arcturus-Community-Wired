@@ -41,18 +41,29 @@ public class WiredConditionFurniHaveFurni extends InteractionWiredCondition {
         if(this.items.isEmpty())
             return true;
 
+        if (room.getLayout() == null)
+            return false;
+
         if(this.all) {
             return this.items.stream().allMatch(item -> {
+                if (item == null) return false;
+                RoomTile baseTile = room.getLayout().getTile(item.getX(), item.getY());
+                if (baseTile == null) return false;
                 double minZ = item.getZ() + Item.getCurrentHeight(item);
-                THashSet<RoomTile> occupiedTiles = room.getLayout().getTilesAt(room.getLayout().getTile(item.getX(), item.getY()), item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation());
-                return occupiedTiles.stream().anyMatch(tile -> room.getItemsAt(tile).stream().anyMatch(matchedItem -> matchedItem != item && matchedItem.getZ() >= minZ));
+                THashSet<RoomTile> occupiedTiles = room.getLayout().getTilesAt(baseTile, item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation());
+                if (occupiedTiles == null) return false;
+                return occupiedTiles.stream().anyMatch(tile -> tile != null && room.getItemsAt(tile).stream().anyMatch(matchedItem -> matchedItem != item && matchedItem.getZ() >= minZ));
             });
         }
         else {
             return this.items.stream().anyMatch(item -> {
+                if (item == null) return false;
+                RoomTile baseTile = room.getLayout().getTile(item.getX(), item.getY());
+                if (baseTile == null) return false;
                 double minZ = item.getZ() + Item.getCurrentHeight(item);
-                THashSet<RoomTile> occupiedTiles = room.getLayout().getTilesAt(room.getLayout().getTile(item.getX(), item.getY()), item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation());
-                return occupiedTiles.stream().anyMatch(tile -> room.getItemsAt(tile).stream().anyMatch(matchedItem -> matchedItem != item && matchedItem.getZ() >= minZ));
+                THashSet<RoomTile> occupiedTiles = room.getLayout().getTilesAt(baseTile, item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation());
+                if (occupiedTiles == null) return false;
+                return occupiedTiles.stream().anyMatch(tile -> tile != null && room.getItemsAt(tile).stream().anyMatch(matchedItem -> matchedItem != item && matchedItem.getZ() >= minZ));
             });
         }
     }

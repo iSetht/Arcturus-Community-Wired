@@ -87,7 +87,10 @@ public class WiredTriggerHabboWalkOnFurni extends InteractionWiredTrigger {
         int count = settings.getFurniIds().length;
 
         for (int i = 0; i < count; i++) {
-            this.items.add(Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(settings.getFurniIds()[i]));
+            HabboItem item = Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(settings.getFurniIds()[i]);
+            if (item != null) {
+                this.items.add(item);
+            }
         }
 
         return true;

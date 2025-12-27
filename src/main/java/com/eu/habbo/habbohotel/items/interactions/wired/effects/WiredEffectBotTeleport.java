@@ -156,6 +156,9 @@ public class WiredEffectBotTeleport extends InteractionWiredEffect {
         if (this.items.isEmpty())
             return false;
 
+        if (room.getLayout() == null)
+            return false;
+
         List<Bot> bots = room.getBots(this.botName);
 
         if (bots.size() != 1) {
@@ -170,7 +173,10 @@ public class WiredEffectBotTeleport extends InteractionWiredEffect {
         for (HabboItem item : this.items) {
             if (item.getRoomId() != 0 && item.getRoomId() == bot.getRoom().getId()) {
                 if (i == j) {
-                    teleportUnitToTile(bot.getRoomUnit(), room.getLayout().getTile(item.getX(), item.getY()));
+                    RoomTile tile = room.getLayout().getTile(item.getX(), item.getY());
+                    if (tile != null) {
+                        teleportUnitToTile(bot.getRoomUnit(), tile);
+                    }
                     return true;
                 } else {
                     j++;

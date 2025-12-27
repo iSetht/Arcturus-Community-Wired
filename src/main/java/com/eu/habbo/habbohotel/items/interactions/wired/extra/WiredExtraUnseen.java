@@ -12,9 +12,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class WiredExtraUnseen extends InteractionWiredExtra {
-    public List<Integer> seenList = new ArrayList<>();
+    public List<Integer> seenList = new CopyOnWriteArrayList<>();
 
     public WiredExtraUnseen(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);

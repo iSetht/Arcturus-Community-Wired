@@ -37,6 +37,8 @@ public class WiredEffectMoveFurniAway extends InteractionWiredEffect {
 
     @Override
     public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        if (room.getLayout() == null) return false;
+
         THashSet<HabboItem> items = new THashSet<>();
 
         for (HabboItem item : this.items) {
@@ -47,7 +49,10 @@ public class WiredEffectMoveFurniAway extends InteractionWiredEffect {
         this.items.removeAll(items);
 
         for (HabboItem item : this.items) {
+            if (item == null) continue;
+
             RoomTile t = room.getLayout().getTile(item.getX(), item.getY());
+            if (t == null) continue;
 
             RoomUnit target = room.getRoomUnits().stream().min(Comparator.comparingDouble(a -> a.getCurrentLocation().distance(t))).orElse(null);
 

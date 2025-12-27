@@ -102,9 +102,14 @@ public class WiredTriggerBotReachedFurni extends InteractionWiredTrigger {
         this.items.clear();
 
         int count = settings.getFurniIds().length;
+        Room room = Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId());
+        if (room == null) return false;
 
         for (int i = 0; i < count; i++) {
-            this.items.add(Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(settings.getFurniIds()[i]));
+            HabboItem item = room.getHabboItem(settings.getFurniIds()[i]);
+            if (item != null) {
+                this.items.add(item);
+            }
         }
 
         return true;

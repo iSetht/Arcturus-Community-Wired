@@ -48,15 +48,21 @@ public class WiredConditionFurniHaveHabbo extends InteractionWiredCondition {
         if (this.items.isEmpty())
             return true;
 
+        if (room.getLayout() == null)
+            return false;
+
         Collection<Habbo> habbos = room.getHabbos();
         Collection<Bot> bots = room.getCurrentBots().valueCollection();
         Collection<Pet> pets = room.getCurrentPets().valueCollection();
 
-        return this.items.stream().allMatch(item -> {
-            THashSet<RoomTile> occupiedTiles = room.getLayout().getTilesAt(room.getLayout().getTile(item.getX(), item.getY()), item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation());
-            return habbos.stream().anyMatch(character -> occupiedTiles.contains(character.getRoomUnit().getCurrentLocation())) ||
-                    bots.stream().anyMatch(character -> occupiedTiles.contains(character.getRoomUnit().getCurrentLocation())) ||
-                    pets.stream().anyMatch(character -> occupiedTiles.contains(character.getRoomUnit().getCurrentLocation()));
+        return this.items.stream().filter(item -> item != null).allMatch(item -> {
+            RoomTile baseTile = room.getLayout().getTile(item.getX(), item.getY());
+            if (baseTile == null) return false;
+            
+            THashSet<RoomTile> occupiedTiles = room.getLayout().getTilesAt(baseTile, item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation());
+            return habbos.stream().anyMatch(character -> character.getRoomUnit() != null && occupiedTiles.contains(character.getRoomUnit().getCurrentLocation())) ||
+                    bots.stream().anyMatch(character -> character.getRoomUnit() != null && occupiedTiles.contains(character.getRoomUnit().getCurrentLocation())) ||
+                    pets.stream().anyMatch(character -> character.getRoomUnit() != null && occupiedTiles.contains(character.getRoomUnit().getCurrentLocation()));
         });
     }
 

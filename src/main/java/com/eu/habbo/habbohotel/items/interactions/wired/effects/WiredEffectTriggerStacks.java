@@ -116,10 +116,27 @@ public class WiredEffectTriggerStacks extends InteractionWiredEffect {
         return true;
     }
 
+    private static final int MAX_STACK_DEPTH = 10;
+    
     @Override
     public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
-
-        if (stuff == null || (stuff.length >= 1 && stuff[stuff.length - 1] instanceof WiredEffectTriggerStacks)) {
+        // Prevent infinite recursion by checking for WiredEffectTriggerStacks in the call chain
+        // and limiting the recursion depth
+        int stackDepth = 0;
+        if (stuff != null) {
+            for (Object obj : stuff) {
+                if (obj instanceof WiredEffectTriggerStacks) {
+                    stackDepth++;
+                    // If this specific stack is already in the chain, prevent infinite loop
+                    if (obj == this) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        // Prevent excessive recursion depth
+        if (stackDepth >= MAX_STACK_DEPTH) {
             return false;
         }
 
@@ -128,6 +145,8 @@ public class WiredEffectTriggerStacks extends InteractionWiredEffect {
         boolean found;
 
         for (HabboItem item : this.items) {
+            if (item == null) continue;
+            
             //if(item instanceof InteractionWiredTrigger)
             {
                 found = false;
@@ -139,7 +158,10 @@ public class WiredEffectTriggerStacks extends InteractionWiredEffect {
                 }
 
                 if (!found) {
-                    usedTiles.add(room.getLayout().getTile(item.getX(), item.getY()));
+                    RoomTile tile = room.getLayout().getTile(item.getX(), item.getY());
+                    if (tile != null) {
+                        usedTiles.add(tile);
+                    }
                 }
             }
         }

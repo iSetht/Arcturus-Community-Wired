@@ -163,15 +163,24 @@ public class WiredEffectTeleport extends InteractionWiredEffect {
 
     @Override
     public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        if (roomUnit == null || room == null || room.getLayout() == null) {
+            return false;
+        }
+        
         this.items.removeIf(item -> item == null || item.getRoomId() != this.getRoomId()
                 || Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null);
 
         if (!this.items.isEmpty()) {
             int i = Emulator.getRandom().nextInt(this.items.size());
             HabboItem item = this.items.get(i);
+            
+            if (item == null) return false;
 
-            teleportUnitToTile(roomUnit, room.getLayout().getTile(item.getX(), item.getY()));
-            return true;
+            RoomTile tile = room.getLayout().getTile(item.getX(), item.getY());
+            if (tile != null) {
+                teleportUnitToTile(roomUnit, tile);
+                return true;
+            }
         }
 
         return false;

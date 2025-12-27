@@ -45,10 +45,12 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
 
     @Override
     public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        if (room == null || room.getLayout() == null) return false;
+        
         THashSet<HabboItem> items = new THashSet<>();
 
         for (HabboItem item : this.items.keySet()) {
-            if (Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null)
+            if (item == null || Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null)
                 items.add(item);
         }
 
@@ -60,13 +62,18 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
 
         for (Map.Entry<HabboItem, WiredChangeDirectionSetting> entry : this.items.entrySet()) {
             HabboItem item = entry.getKey();
-            RoomTile targetTile = room.getLayout().getTileInFront(room.getLayout().getTile(item.getX(), item.getY()), entry.getValue().direction.getValue());
+            if (item == null || entry.getValue() == null) continue;
+            
+            RoomTile itemTile = room.getLayout().getTile(item.getX(), item.getY());
+            if (itemTile == null) continue;
+            
+            RoomTile targetTile = room.getLayout().getTileInFront(itemTile, entry.getValue().direction.getValue());
 
             int count = 1;
             while ((targetTile == null || targetTile.state == RoomTileState.INVALID || room.furnitureFitsAt(targetTile, item, item.getRotation(), false) != FurnitureMovementError.NONE) && count < 8) {
                 entry.getValue().direction = this.nextRotation(entry.getValue().direction);
 
-                RoomTile tile = room.getLayout().getTileInFront(room.getLayout().getTile(item.getX(), item.getY()), entry.getValue().direction.getValue());
+                RoomTile tile = room.getLayout().getTileInFront(itemTile, entry.getValue().direction.getValue());
                 if (tile != null && tile.state != RoomTileState.INVALID) {
                     targetTile = tile;
                 }
@@ -77,16 +84,23 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
 
         for (Map.Entry<HabboItem, WiredChangeDirectionSetting> entry : this.items.entrySet()) {
             HabboItem item = entry.getKey();
+            if (item == null || entry.getValue() == null) continue;
+            
             int newDirection = entry.getValue().direction.getValue();
 
-            RoomTile targetTile = room.getLayout().getTileInFront(room.getLayout().getTile(item.getX(), item.getY()), newDirection);
+            RoomTile itemTile = room.getLayout().getTile(item.getX(), item.getY());
+            if (itemTile == null) continue;
+            
+            RoomTile targetTile = room.getLayout().getTileInFront(itemTile, newDirection);
 
             if(item.getRotation() != entry.getValue().rotation) {
-                if(room.furnitureFitsAt(targetTile, item, entry.getValue().rotation, false) != FurnitureMovementError.NONE)
+                if(targetTile == null || room.furnitureFitsAt(targetTile, item, entry.getValue().rotation, false) != FurnitureMovementError.NONE)
                     continue;
 
                 room.moveFurniTo(entry.getKey(), targetTile, entry.getValue().rotation, null, true);
             }
+
+            if (targetTile == null) continue;
 
             boolean hasRoomUnits = false;
             THashSet<RoomTile> newOccupiedTiles = room.getLayout().getTilesAt(targetTile, item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation());
@@ -100,11 +114,11 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
                 }
             }
 
-            if (targetTile != null && targetTile.state != RoomTileState.INVALID && room.furnitureFitsAt(targetTile, item, item.getRotation(), false) == FurnitureMovementError.NONE) {
+            if (targetTile.state != RoomTileState.INVALID && room.furnitureFitsAt(targetTile, item, item.getRotation(), false) == FurnitureMovementError.NONE) {
                 if (!hasRoomUnits) {
                     RoomTile oldLocation = room.getLayout().getTile(entry.getKey().getX(), entry.getKey().getY());
                     double oldZ = entry.getKey().getZ();
-                    if(room.moveFurniTo(entry.getKey(), targetTile, item.getRotation(), null, false) == FurnitureMovementError.NONE) {
+                    if(oldLocation != null && room.moveFurniTo(entry.getKey(), targetTile, item.getRotation(), null, false) == FurnitureMovementError.NONE) {
                         room.sendComposer(new FloorItemOnRollerComposer(entry.getKey(), null, oldLocation, oldZ, targetTile, entry.getKey().getZ(), 0, room).compose());
                     }
                 }

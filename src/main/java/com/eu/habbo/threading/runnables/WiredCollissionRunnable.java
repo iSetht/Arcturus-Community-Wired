@@ -19,6 +19,11 @@ public class WiredCollissionRunnable implements Runnable {
 
     @Override
     public void run() {
-        WiredHandler.handle(WiredTriggerType.COLLISION, roomUnit, room, objects);
+        if (this.roomUnit == null || this.room == null || !this.room.isLoaded()) return;
+        try {
+            WiredHandler.handle(WiredTriggerType.COLLISION, roomUnit, room, objects);
+        } catch (Exception e) {
+            // Prevent task from crashing the thread pool
+        }
     }
 }

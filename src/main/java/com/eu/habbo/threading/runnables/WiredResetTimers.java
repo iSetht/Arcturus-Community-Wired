@@ -14,7 +14,13 @@ public class WiredResetTimers implements Runnable {
     @Override
     public void run() {
         if (!Emulator.isShuttingDown && Emulator.isReady) {
-            WiredHandler.resetTimers(this.room);
+            if (this.room != null && this.room.isLoaded()) {
+                try {
+                    WiredHandler.resetTimers(this.room);
+                } catch (Exception e) {
+                    // Prevent task from crashing the thread pool
+                }
+            }
         }
     }
 }

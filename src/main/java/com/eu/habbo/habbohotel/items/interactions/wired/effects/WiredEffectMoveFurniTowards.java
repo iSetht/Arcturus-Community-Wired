@@ -53,7 +53,10 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
         List<RoomUserRotation> availableDirections = new ArrayList<>();
         RoomLayout layout = room.getLayout();
 
+        if (layout == null) return availableDirections;
+
         RoomTile currentTile = layout.getTile(item.getX(), item.getY());
+        if (currentTile == null) return availableDirections;
 
         RoomUserRotation[] rotations = new RoomUserRotation[]{RoomUserRotation.NORTH, RoomUserRotation.EAST, RoomUserRotation.SOUTH, RoomUserRotation.WEST};
 
@@ -213,9 +216,11 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
                 }
             }
 
-            RoomTile newTile = room.getLayout().getTileInFront(room.getLayout().getTile(item.getX(), item.getY()), moveDirection.getValue());
-
             RoomTile oldLocation = room.getLayout().getTile(item.getX(), item.getY());
+            if (oldLocation == null) continue;
+
+            RoomTile newTile = room.getLayout().getTileInFront(oldLocation, moveDirection.getValue());
+
             double oldZ = item.getZ();
 
             if(newTile != null) {

@@ -126,7 +126,9 @@ public class WiredEffectBotWalkToFurni extends InteractionWiredEffect {
             HabboItem item = possibleItems.get(Emulator.getRandom().nextInt(possibleItems.size()));
 
             if (item.getRoomId() != 0 && item.getRoomId() == bot.getRoom().getId()) {
-                bot.getRoomUnit().setGoalLocation(room.getLayout().getTile(item.getX(), item.getY()));
+                if (room.getLayout() != null) {
+                    bot.getRoomUnit().setGoalLocation(room.getLayout().getTile(item.getX(), item.getY()));
+                }
             }
         }
 
