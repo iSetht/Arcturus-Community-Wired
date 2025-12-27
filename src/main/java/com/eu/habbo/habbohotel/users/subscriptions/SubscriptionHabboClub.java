@@ -215,7 +215,7 @@ public class SubscriptionHabboClub extends Subscription {
                 }
             }
 
-            THashMap<String, Object> queryParams = new THashMap();
+            THashMap<String, Object> queryParams = new THashMap<>();
             queryParams.put("@user_id", habbo.getId());
             queryParams.put("@timestamp_start", habbo.getHabboStats().lastHCPayday);
             queryParams.put("@timestamp_end", HC_PAYDAY_NEXT_DATE);
@@ -329,7 +329,7 @@ public class SubscriptionHabboClub extends Subscription {
                 while (set.next()) {
                     try {
                         int logId = set.getInt("id");
-                        int userId = set.getInt("user_id");
+                        set.getInt("user_id"); // consumed but unused - user_id is in logs_hc_payday
                         int totalPayout = set.getInt("total_payout");
                         String currency = set.getString("currency");
 

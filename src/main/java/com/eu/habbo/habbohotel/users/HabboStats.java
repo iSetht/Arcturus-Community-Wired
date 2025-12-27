@@ -283,11 +283,8 @@ public class HabboStats implements Runnable {
                 try (PreparedStatement statement = connection.prepareStatement("SELECT guild_id FROM guilds_members WHERE user_id = ? AND level_id < 3 LIMIT 100")) {
                     statement.setInt(1, habboInfo.getId());
                     try (ResultSet set = statement.executeQuery()) {
-
-                        int i = 0;
                         while (set.next()) {
                             stats.guilds.add(set.getInt("guild_id"));
-                            i++;
                         }
                     }
                 }

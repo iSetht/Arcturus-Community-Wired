@@ -68,7 +68,6 @@ import gnu.trove.map.hash.TIntObjectHashMap;
 import gnu.trove.procedure.TIntObjectProcedure;
 import gnu.trove.procedure.TObjectProcedure;
 import gnu.trove.set.hash.THashSet;
-import io.netty.util.internal.ConcurrentSet;
 import org.apache.commons.math3.util.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,19 +89,19 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Room.class);
 
-    public static final Comparator SORT_SCORE = (o1, o2) -> {
+    public static final Comparator<Room> SORT_SCORE = (o1, o2) -> {
 
         if (!(o1 instanceof Room && o2 instanceof Room))
             return 0;
 
-        return ((Room) o2).getScore() - ((Room) o1).getScore();
+        return o2.getScore() - o1.getScore();
     };
-    public static final Comparator SORT_ID = (o1, o2) -> {
+    public static final Comparator<Room> SORT_ID = (o1, o2) -> {
 
         if (!(o1 instanceof Room && o2 instanceof Room))
             return 0;
 
-        return ((Room) o2).getId() - ((Room) o1).getId();
+        return o2.getId() - o1.getId();
     };
     private static final TIntObjectHashMap<RoomMoodlightData> defaultMoodData = new TIntObjectHashMap<>();
     //Configuration. Loaded from database & updated accordingly.
@@ -138,7 +137,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     private final TIntArrayList rights;
     private final TIntIntHashMap mutedHabbos;
     private final TIntObjectHashMap<RoomBan> bannedHabbos;
-    private final ConcurrentSet<Game> games;
+    private final Set<Game> games;
     private final TIntObjectMap<String> furniOwnerNames;
     private final TIntIntMap furniOwnerCount;
     private final TIntObjectMap<RoomMoodlightData> moodlightData;
@@ -148,13 +147,13 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     //Use appropriately. Could potentially cause memory leaks when used incorrectly.
     public volatile boolean preventUnloading = false;
     public volatile boolean preventUncaching = false;
-    public ConcurrentSet<ServerMessage> scheduledComposers = new ConcurrentSet<>();
-    public ConcurrentSet<Runnable> scheduledTasks = new ConcurrentSet<>();
+    public Set<ServerMessage> scheduledComposers = ConcurrentHashMap.newKeySet();
+    public Set<Runnable> scheduledTasks = ConcurrentHashMap.newKeySet();
     public String wordQuiz = "";
     public int noVotes = 0;
     public int yesVotes = 0;
     public int wordQuizEnd = 0;
-    public ScheduledFuture roomCycleTask;
+    public ScheduledFuture<?> roomCycleTask;
     private int id;
     private int ownerId;
     private String ownerName;
@@ -298,7 +297,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
         }
 
         this.mutedHabbos = new TIntIntHashMap();
-        this.games = new ConcurrentSet<>();
+        this.games = ConcurrentHashMap.newKeySet();
 
         this.activeTrades = new THashSet<>(0);
         this.rights = new TIntArrayList();
@@ -769,7 +768,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     public void updateHabbosAt(short x, short y, THashSet<Habbo> habbos) {
         HabboItem item = this.getTopItemAt(x, y);
 
-        THashSet<RoomUnit> roomUnits = new THashSet<>();
         for (Habbo habbo : habbos) {
 
             double oldZ = habbo.getRoomUnit().getZ();
@@ -1102,8 +1100,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
     @Override
     public void run() {
-        long millis = System.currentTimeMillis();
-
         synchronized (this.loadLock) {
             if (this.loaded) {
                 try {
@@ -1201,8 +1197,8 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
         this.tileCache.clear();
         if (loaded) {
             if (!this.scheduledTasks.isEmpty()) {
-                ConcurrentSet<Runnable> tasks = this.scheduledTasks;
-                this.scheduledTasks = new ConcurrentSet<>();
+                Set<Runnable> tasks = this.scheduledTasks;
+                this.scheduledTasks = ConcurrentHashMap.newKeySet();
 
                 for (Runnable runnable : tasks) {
                     Emulator.getThreading().run(runnable);
@@ -1487,8 +1483,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
                                     }
                                 }
                             }
-
-                            HabboItem nextTileChair = this.getTallestChair(tileInFront);
 
                             THashSet<Integer> usersRolledThisTile = new THashSet<>();
 
@@ -2263,7 +2257,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
         return game;
     }
 
-    public ConcurrentSet<Game> getGames() {
+    public Set<Game> getGames() {
         return this.games;
     }
 
@@ -4541,7 +4535,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
         this.hideWired = hideWired;
 
         if (this.hideWired) {
-            ServerMessage response = null;
             for (HabboItem item : this.roomSpecialTypes.getTriggers()) {
                 this.sendComposer(new RemoveFloorItemComposer(item).compose());
             }
@@ -4911,10 +4904,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     }
 
     public FurnitureMovementError slideFurniTo(HabboItem item, RoomTile tile, int rotation) {
-        RoomTile oldLocation = this.layout.getTile(item.getX(), item.getY());
-
-        HabboItem topItem = this.getTopItemAt(tile.x, tile.y);
-
         boolean magicTile = item instanceof InteractionStackHelper;
 
         //Check if can be placed at new position
@@ -4929,9 +4918,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
             return FurnitureMovementError.CANT_STACK;
         }
 
-        THashSet<RoomTile> oldOccupiedTiles = this.layout.getTilesAt(this.layout.getTile(item.getX(), item.getY()), item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation());
-
-        int oldRotation = item.getRotation();
         item.setRotation(rotation);
 
         //Place at new position

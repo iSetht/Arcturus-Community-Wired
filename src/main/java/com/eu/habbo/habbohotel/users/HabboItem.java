@@ -37,7 +37,7 @@ public abstract class HabboItem implements Runnable, IEventTriggers {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HabboItem.class);
 
-    private static Class[] TOGGLING_INTERACTIONS = new Class[]{
+    private static Class<?>[] TOGGLING_INTERACTIONS = new Class<?>[]{
             InteractionGameTimer.class,
             InteractionWired.class,
             InteractionWiredHighscore.class,

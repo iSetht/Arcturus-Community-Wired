@@ -82,6 +82,7 @@ public final class Emulator {
         Runtime.getRuntime().addShutdownHook(hook);
     }
 
+    @SuppressWarnings("resource")
     public static void promptEnterKey(){
         System.out.println("\n");
         System.out.println("Press \"ENTER\" if you agree to the terms stated above...");
@@ -215,14 +216,15 @@ public final class Emulator {
         try {
             String filepath = new File(Emulator.class.getProtectionDomain().getCodeSource().getLocation().getPath()).getAbsolutePath();
             MessageDigest md = MessageDigest.getInstance("MD5");// MD5
-            FileInputStream fis = new FileInputStream(filepath);
-            byte[] dataBytes = new byte[1024];
-            int nread = 0;
-            while ((nread = fis.read(dataBytes)) != -1)
-                md.update(dataBytes, 0, nread);
-            byte[] mdbytes = md.digest();
-            for (int i = 0; i < mdbytes.length; i++)
-                sb.append(Integer.toString((mdbytes[i] & 0xff) + 0x100, 16).substring(1));
+            try (FileInputStream fis = new FileInputStream(filepath)) {
+                byte[] dataBytes = new byte[1024];
+                int nread = 0;
+                while ((nread = fis.read(dataBytes)) != -1)
+                    md.update(dataBytes, 0, nread);
+                byte[] mdbytes = md.digest();
+                for (int i = 0; i < mdbytes.length; i++)
+                    sb.append(Integer.toString((mdbytes[i] & 0xff) + 0x100, 16).substring(1));
+            }
         } catch (Exception e) {
             build = "UNKNOWN";
             return;
@@ -414,8 +416,6 @@ public final class Emulator {
     }
 
     public static Date modifyDate(Date date, String timeString) {
-        int totalSeconds = 0;
-
         Calendar c = Calendar.getInstance();
         c.setTime(date);
 

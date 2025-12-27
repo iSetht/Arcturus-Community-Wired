@@ -30,7 +30,7 @@ public class WiredHighscoreManager {
     private final static DayOfWeek lastDayOfWeek = DayOfWeek.of(((firstDayOfWeek.getValue() + 5) % DayOfWeek.values().length) + 1);
     private final static ZoneId zoneId = ZoneId.systemDefault();
 
-    public static ScheduledFuture midnightUpdater = null;
+    public static ScheduledFuture<?> midnightUpdater = null;
 
     public void load() {
         long millis = System.currentTimeMillis();

@@ -14,7 +14,7 @@ public class UseRandomStateItemEvent extends MessageHandler {
     public void handle() throws Exception {
         try {
             int itemId = this.packet.readInt();
-            int state = this.packet.readInt();
+            this.packet.readInt(); // state
 
             Room room = this.client.getHabbo().getHabboInfo().getCurrentRoom();
 

@@ -22,7 +22,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
 
-public class InteractionGameTimer extends HabboItem implements Runnable {
+public class InteractionGameTimer extends HabboItem {
     private static final Logger LOGGER = LoggerFactory.getLogger(InteractionGameTimer.class);
 
     private int[] TIMER_INTERVAL_STEPS = new int[] { 30, 60, 120, 180, 300, 600 };

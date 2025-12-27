@@ -33,7 +33,6 @@ import com.eu.habbo.messages.outgoing.unknown.BuildersClubExpiredComposer;
 import com.eu.habbo.messages.outgoing.mysterybox.MysteryBoxKeysComposer;
 import com.eu.habbo.messages.outgoing.users.*;
 import com.eu.habbo.plugin.events.emulator.SSOAuthenticationEvent;
-import com.eu.habbo.plugin.events.users.UserExecuteCommandEvent;
 import com.eu.habbo.plugin.events.users.UserLoginEvent;
 import gnu.trove.map.hash.THashMap;
 import org.slf4j.Logger;

@@ -155,29 +155,7 @@ public class GuardianTicket {
 
 
     public GuardianVoteType calculateVerdict() {
-        int countAcceptably = 0;
-        int countBadly = 0;
-        int countAwfully = 0;
-        int total = 0;
-
-        synchronized (this.votes) {
-            for (Map.Entry<Habbo, GuardianVote> set : this.votes.entrySet()) {
-                GuardianVote vote = set.getValue();
-
-                if (vote.type == GuardianVoteType.ACCEPTABLY) {
-                    countAcceptably++;
-                } else if (vote.type == GuardianVoteType.BADLY) {
-                    countBadly++;
-                } else if (vote.type == GuardianVoteType.AWFULLY) {
-                    countAwfully++;
-                }
-            }
-        }
-
-        total += countAcceptably;
-        total += countBadly;
-
-
+        // Vote counting logic placeholder - currently returns fixed verdict
         return GuardianVoteType.BADLY;
     }
 
