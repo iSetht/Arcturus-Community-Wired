@@ -20,8 +20,8 @@ public class MannequinSaveLookEvent extends MessageHandler {
             return;
 
         String[] data = item.getExtradata().split(":");
-        //TODO: Only clothing not whole body part.
-
+        
+        // Extract only clothing parts, excluding head/face features (hr, hd, he, ea, ha, fa)
         StringBuilder look = new StringBuilder();
 
         for (String s : habbo.getHabboInfo().getLook().split("\\.")) {
