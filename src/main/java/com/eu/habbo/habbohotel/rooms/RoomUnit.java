@@ -67,7 +67,6 @@ public class RoomUnit {
   private boolean fastWalk = false;
   private boolean statusUpdate = false;
   private boolean invisible = false;
-  private boolean lastCycleStatus = false;
   private boolean canLeaveRoomByDoor = true;
   private RoomUserRotation bodyRotation = RoomUserRotation.NORTH;
   private RoomUserRotation headRotation = RoomUserRotation.NORTH;
@@ -79,7 +78,7 @@ public class RoomUnit {
   private int walkTimeOut;
   private int effectId;
   private int effectEndTimestamp;
-  private ScheduledFuture moveBlockingTask;
+  private ScheduledFuture<?> moveBlockingTask;
 
   private int idleTimer;
   private Room room;
@@ -834,11 +833,11 @@ public class RoomUnit {
                 || !room.hasHabbosAt(t.x, t.y))).collect(Collectors.toList()));
   }
 
-  public ScheduledFuture getMoveBlockingTask() {
+  public ScheduledFuture<?> getMoveBlockingTask() {
     return moveBlockingTask;
   }
 
-  public void setMoveBlockingTask(ScheduledFuture moveBlockingTask) {
+  public void setMoveBlockingTask(ScheduledFuture<?> moveBlockingTask) {
     this.moveBlockingTask = moveBlockingTask;
   }
 }
