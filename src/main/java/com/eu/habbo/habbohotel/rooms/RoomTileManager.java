@@ -27,6 +27,8 @@ public class RoomTileManager {
      */
     public void updateTile(RoomTile tile) {
         if (tile != null) {
+            this.room.tileCache.remove(tile);
+            this.room.getItemManager().tileCache.remove(tile);
             tile.setStackHeight(this.getStackHeight(tile.x, tile.y, false));
             tile.setState(this.calculateTileState(tile));
         }
@@ -38,6 +40,7 @@ public class RoomTileManager {
     public void updateTiles(THashSet<RoomTile> tiles) {
         for (RoomTile tile : tiles) {
             this.room.tileCache.remove(tile);
+            this.room.getItemManager().tileCache.remove(tile);
             tile.setStackHeight(this.getStackHeight(tile.x, tile.y, false));
             tile.setState(this.calculateTileState(tile));
         }
