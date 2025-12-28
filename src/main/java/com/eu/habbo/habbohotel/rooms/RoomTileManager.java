@@ -288,7 +288,8 @@ public class RoomTileManager {
             return false;
         }
 
-        THashSet<HabboItem> items = this.room.getItemManager().getItemsAt(x, y);
+        RoomTile tile = this.room.getLayout().getTile((short) x, (short) y);
+        THashSet<HabboItem> items = this.room.getItemManager().getItemsAt(tile);
 
         return this.canSitAt(items) || this.canLayAt(items);
     }
@@ -301,7 +302,8 @@ public class RoomTileManager {
             return false;
         }
 
-        return this.canSitAt(this.room.getItemManager().getItemsAt(x, y));
+        RoomTile tile = this.room.getLayout().getTile((short) x, (short) y);
+        return this.canSitAt(this.room.getItemManager().getItemsAt(tile));
     }
 
     /**
@@ -334,7 +336,8 @@ public class RoomTileManager {
      * Checks if a user can lay at a position.
      */
     public boolean canLayAt(int x, int y) {
-        return this.canLayAt(this.room.getItemManager().getItemsAt(x, y));
+        RoomTile tile = this.room.getLayout().getTile((short) x, (short) y);
+        return this.canLayAt(this.room.getItemManager().getItemsAt(tile));
     }
 
     /**

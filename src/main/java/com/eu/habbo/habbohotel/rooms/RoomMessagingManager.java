@@ -3,16 +3,12 @@ package com.eu.habbo.habbohotel.rooms;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.outgoing.generic.alerts.GenericAlertComposer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Manages all messaging and communication within a room.
  * Handles sending messages to Habbos, pet/bot chat, and alerts.
  */
 public class RoomMessagingManager {
-    private static final Logger LOGGER = LoggerFactory.getLogger(RoomMessagingManager.class);
-
     private final Room room;
 
     public RoomMessagingManager(Room room) {
