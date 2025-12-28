@@ -109,8 +109,15 @@ public class WiredTriggerRepeaterLong extends InteractionWiredTrigger implements
     @Override
     public boolean saveData(WiredSettings settings) {
         if(settings.getIntParams().length < 1) return false;
-        this.repeatTime = settings.getIntParams()[0] * 5000;
-        this.counter = 0;
+        int newRepeatTime = settings.getIntParams()[0] * 5000;
+
+        // Only reset the counter if the repeat time actually changed
+        // This prevents desync when saving without changing the timer
+        if (this.repeatTime != newRepeatTime) {
+            this.counter = 0;
+            this.repeatTime = newRepeatTime;
+        }
+
         return true;
     }
 

@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -194,7 +193,8 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   private volatile boolean muted;
   private RoomSpecialTypes roomSpecialTypes;
   private TraxManager traxManager;
-  public Map<String, Long> repeatersLastTick = new HashMap<>();
+  // Use ConcurrentHashMap for thread-safety since wired repeaters access this from cycle threads
+  public Map<String, Long> repeatersLastTick = new ConcurrentHashMap<>();
   public final THashMap<String, Object> cache;
 
   public Room(ResultSet set) throws SQLException {

@@ -17,26 +17,26 @@ import gnu.trove.set.hash.THashSet;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implements ICycleable {
 
     public static final WiredEffectType type = WiredEffectType.MOVE_ROTATE;
-    private final THashSet<HabboItem> items = new THashSet<>(WiredHandler.MAXIMUM_FURNI_SELECTION / 2);
+    // Use LinkedHashSet to preserve insertion order for consistent movement
+    private final Set<HabboItem> items = new LinkedHashSet<>(WiredHandler.MAXIMUM_FURNI_SELECTION / 2);
     private int direction;
     private int rotation;
-    private THashSet<HabboItem> itemCooldowns;
+    // Use thread-safe set for cooldowns since execute() can be called from async threads
+    private final Set<HabboItem> itemCooldowns = ConcurrentHashMap.newKeySet();
 
     public WiredEffectMoveRotateFurni(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
-        this.itemCooldowns = new THashSet<>();
     }
 
     public WiredEffectMoveRotateFurni(int id, int userId, Item item, String extradata, int limitedStack, int limitedSells) {
         super(id, userId, item, extradata, limitedStack, limitedSells);
-        this.itemCooldowns = new THashSet<>();
     }
 
     @Override
@@ -79,7 +79,7 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
 
     @Override
     public String getWiredData() {
-        THashSet<HabboItem> itemsToRemove = new THashSet<>(this.items.size() / 2);
+        List<HabboItem> itemsToRemove = new ArrayList<>();
 
         Room room = Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId());
 
@@ -153,14 +153,14 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
 
     @Override
     public void serializeWiredData(ServerMessage message, Room room) {
-        THashSet<HabboItem> items = new THashSet<>();
+        List<HabboItem> itemsToRemove = new ArrayList<>();
 
         for (HabboItem item : this.items) {
             if (item.getRoomId() != this.getRoomId() || Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null)
-                items.add(item);
+                itemsToRemove.add(item);
         }
 
-        for (HabboItem item : items) {
+        for (HabboItem item : itemsToRemove) {
             this.items.remove(item);
         }
 
