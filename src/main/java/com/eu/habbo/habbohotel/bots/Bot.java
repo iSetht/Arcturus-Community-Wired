@@ -139,26 +139,30 @@ public class Bot implements Runnable {
     @Override
     public void run() {
         if (this.needsUpdate) {
-            try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); PreparedStatement statement = connection.prepareStatement("UPDATE bots SET name = ?, motto = ?, figure = ?, gender = ?, user_id = ?, room_id = ?, dance = ?, freeroam = ?, chat_lines = ?, chat_auto = ?, chat_random = ?, chat_delay = ?, effect = ?, bubble_id = ? WHERE id = ?")) {
+            try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); PreparedStatement statement = connection.prepareStatement("UPDATE bots SET name = ?, motto = ?, figure = ?, gender = ?, user_id = ?, room_id = ?, x = ?, y = ?, z = ?, rot = ?, dance = ?, freeroam = ?, chat_lines = ?, chat_auto = ?, chat_random = ?, chat_delay = ?, effect = ?, bubble_id = ? WHERE id = ?")) {
                 statement.setString(1, this.name);
                 statement.setString(2, this.motto);
                 statement.setString(3, this.figure);
                 statement.setString(4, this.gender.toString());
                 statement.setInt(5, this.ownerId);
                 statement.setInt(6, this.room == null ? 0 : this.room.getId());
-                statement.setInt(7, this.roomUnit == null ? 0 : this.roomUnit.getDanceType().getType());
-                statement.setString(8, this.canWalk ? "1" : "0");
+                statement.setInt(7, this.roomUnit == null ? 0 : this.roomUnit.getX());
+                statement.setInt(8, this.roomUnit == null ? 0 : this.roomUnit.getY());
+                statement.setDouble(9, this.roomUnit == null ? 0 : this.roomUnit.getZ());
+                statement.setInt(10, this.roomUnit == null ? 0 : this.roomUnit.getBodyRotation().getValue());
+                statement.setInt(11, this.roomUnit == null ? 0 : this.roomUnit.getDanceType().getType());
+                statement.setString(12, this.canWalk ? "1" : "0");
                 StringBuilder text = new StringBuilder();
                 for (String s : this.chatLines) {
                     text.append(s).append("\r");
                 }
-                statement.setString(9, text.toString());
-                statement.setString(10, this.chatAuto ? "1" : "0");
-                statement.setString(11, this.chatRandom ? "1" : "0");
-                statement.setInt(12, this.chatDelay);
-                statement.setInt(13, this.effect);
-                statement.setInt(14, this.bubble);
-                statement.setInt(15, this.id);
+                statement.setString(13, text.toString());
+                statement.setString(14, this.chatAuto ? "1" : "0");
+                statement.setString(15, this.chatRandom ? "1" : "0");
+                statement.setInt(16, this.chatDelay);
+                statement.setInt(17, this.effect);
+                statement.setInt(18, this.bubble);
+                statement.setInt(19, this.id);
                 statement.execute();
                 this.needsUpdate = false;
             } catch (SQLException e) {
@@ -176,7 +180,7 @@ public class Bot implements Runnable {
                                 Bot.BOT_LIMIT_WALKING_DISTANCE
                                         ? this.room.getRandomWalkableTilesAround(
                                         this.getRoomUnit(),
-                                        this.room.getLayout().getTile(this.roomUnit.getX(), this.roomUnit.getY()),
+                                        this.room.getLayout().getTile(this.roomUnit.getBotStartLocation().x, this.roomUnit.getBotStartLocation().y),
                                         Bot.BOT_WALKING_DISTANCE_RADIUS)
                                         : this.room.getRandomWalkableTile()
                         );

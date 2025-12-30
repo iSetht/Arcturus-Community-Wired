@@ -1030,7 +1030,7 @@ public class RoomUnitManager {
                 ((RideablePet) pet).setRider(null);
             }
             
-            Emulator.getThreading().run(pet);
+            pet.run();  // Run synchronously to ensure DB is updated before room reload
             
             Habbo owner = Emulator.getGameEnvironment().getHabboManager().getHabbo(pet.getUserId());
             if (owner != null) {

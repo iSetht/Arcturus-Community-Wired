@@ -1,6 +1,7 @@
 package com.eu.habbo.habbohotel.rooms;
 
 import com.eu.habbo.Emulator;
+import com.eu.habbo.habbohotel.bots.Bot;
 import com.eu.habbo.habbohotel.items.Item;
 import com.eu.habbo.habbohotel.items.interactions.InteractionStackHelper;
 import com.eu.habbo.habbohotel.items.interactions.InteractionTileWalkMagic;
@@ -424,9 +425,13 @@ public class RoomTileManager {
         RoomLayout layout = this.room.getLayout();
         if (layout == null) return tile;
         
-        if (!layout.tileExists(tile.x, tile.y)) {
+        if (tile == null || !layout.tileExists(tile.x, tile.y)) {
             tile = layout.getTile(roomUnit.getX(), roomUnit.getY());
-            this.room.getUnitManager().getBot(roomUnit).needsUpdate(true);
+            roomUnit.setBotStartLocation(tile);
+            Bot bot = this.room.getUnitManager().getBot(roomUnit);
+            if (bot != null) {
+                bot.needsUpdate(true);
+            }
         }
 
         java.util.List<RoomTile> walkableTiles = new java.util.ArrayList<>();

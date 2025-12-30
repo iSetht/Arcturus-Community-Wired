@@ -56,6 +56,7 @@ public class RoomUnit {
   public int kickCount = 0;
   private int id;
   private RoomTile startLocation;
+  private RoomTile botStartLocation;
   private RoomTile previousLocation;
   private double previousLocationZ;
   private RoomTile currentLocation;
@@ -542,7 +543,16 @@ public class RoomUnit {
       setPreviousLocation(location);
       setCurrentLocation(location);
       this.goalLocation = location;
+      this.botStartLocation = location;
     }
+  }
+
+  public RoomTile getBotStartLocation() {
+    return this.botStartLocation;
+  }
+
+  public void setBotStartLocation(RoomTile botStartLocation) {
+    this.botStartLocation = botStartLocation;
   }
 
   public RoomTile getPreviousLocation() {

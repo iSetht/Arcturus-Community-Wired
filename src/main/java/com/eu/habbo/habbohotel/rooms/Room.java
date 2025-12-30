@@ -797,20 +797,21 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
           this.sendComposer(new HotelViewComposer().compose());
 
-          this.unitManager.clear();
-
+          // Save bots BEFORE clearing - must happen before unitManager.clear()
           TIntObjectIterator<Bot> botIterator = this.getCurrentBots().iterator();
 
           for (int i = this.getCurrentBots().size(); i-- > 0; ) {
             try {
               botIterator.advance();
               botIterator.value().needsUpdate(true);
-              Emulator.getThreading().run(botIterator.value());
+              botIterator.value().run();  // Run synchronously to ensure DB is updated before room reload
             } catch (NoSuchElementException e) {
               LOGGER.error("Caught exception", e);
               break;
             }
           }
+
+          this.unitManager.clear();
 
           this.unitManager.clearBots();
           this.unitManager.clearPets();

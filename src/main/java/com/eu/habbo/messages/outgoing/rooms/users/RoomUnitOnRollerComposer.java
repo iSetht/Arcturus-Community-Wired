@@ -1,10 +1,13 @@
 package com.eu.habbo.messages.outgoing.rooms.users;
 
 import com.eu.habbo.Emulator;
+import com.eu.habbo.habbohotel.bots.Bot;
 import com.eu.habbo.habbohotel.items.interactions.InteractionRoller;
+import com.eu.habbo.habbohotel.pets.Pet;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
+import com.eu.habbo.habbohotel.rooms.RoomUnitType;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.outgoing.MessageComposer;
@@ -92,6 +95,19 @@ public class RoomUnitOnRollerComposer extends MessageComposer {
                 this.roomUnit.setLocation(this.newLocation);
                 this.roomUnit.setZ(this.newZ);
                 this.roomUnit.setPreviousLocationZ(this.newZ);
+                
+                // Mark bots and pets for database update when moved by rollers
+                if (this.roomUnit.getRoomUnitType() == RoomUnitType.BOT) {
+                    Bot bot = this.room.getBot(this.roomUnit);
+                    if (bot != null) {
+                        bot.needsUpdate(true);
+                    }
+                } else if (this.roomUnit.getRoomUnitType() == RoomUnitType.PET) {
+                    Pet pet = this.room.getPet(this.roomUnit);
+                    if (pet != null) {
+                        pet.needsUpdate = true;
+                    }
+                }
             }
             
             // Delay the walk on/off events to allow the visual animation to complete
