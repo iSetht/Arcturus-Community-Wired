@@ -139,6 +139,13 @@ public class RoomUnitManager {
     }
 
     /**
+     * Gets all Habbos in the room as a map.
+     */
+    public ConcurrentHashMap<Integer, Habbo> getCurrentHabbos() {
+        return this.currentHabbos;
+    }
+
+    /**
      * Gets all Habbos in the room.
      */
     public Collection<Habbo> getHabbos() {

@@ -118,7 +118,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   public final Object roomUnitLock = new Object();
   public final ConcurrentHashMap<RoomTile, THashSet<HabboItem>> tileCache = new ConcurrentHashMap<>();
   public final List<Integer> userVotes;
-  private final ConcurrentHashMap<Integer, Habbo> currentHabbos = new ConcurrentHashMap<>(3);
   private final TIntObjectMap<Habbo> habboQueue = TCollections.synchronizedMap(
       new TIntObjectHashMap<>(0));
   private final TIntObjectMap<Bot> currentBots = TCollections.synchronizedMap(
@@ -400,7 +399,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
       try (Connection connection = Emulator.getDatabase().getDataSource().getConnection()) {
         synchronized (this.roomUnitLock) {
           this.unitManager.clear();
-          this.currentHabbos.clear();
           this.currentPets.clear();
           this.currentBots.clear();
         }
@@ -804,13 +802,13 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
             this.habboQueue.clear();
           }
 
-          for (Habbo habbo : this.currentHabbos.values()) {
+          for (Habbo habbo : this.getCurrentHabbos().values()) {
             Emulator.getGameEnvironment().getRoomManager().leaveRoom(habbo, this);
           }
 
           this.sendComposer(new HotelViewComposer().compose());
 
-          this.currentHabbos.clear();
+          this.unitManager.clear();
 
           TIntObjectIterator<Bot> botIterator = this.currentBots.iterator();
 
@@ -1005,7 +1003,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     try (Connection connection = Emulator.getDatabase().getDataSource()
         .getConnection(); PreparedStatement statement = connection.prepareStatement(
         "UPDATE rooms SET users = ? WHERE id = ? LIMIT 1")) {
-      statement.setInt(1, this.currentHabbos.size());
+      statement.setInt(1, this.getUserCount());
       statement.setInt(2, this.id);
       statement.executeUpdate();
     } catch (SQLException e) {
@@ -1465,15 +1463,15 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   }
 
   public int getUserCount() {
-    return this.currentHabbos.size();
+    return this.unitManager.getHabboCount();
   }
 
   public ConcurrentHashMap<Integer, Habbo> getCurrentHabbos() {
-    return this.currentHabbos;
+    return this.unitManager.getCurrentHabbos();
   }
 
   public Collection<Habbo> getHabbos() {
-    return this.currentHabbos.values();
+    return this.unitManager.getHabbos();
   }
 
   public TIntObjectMap<Habbo> getHabboQueue() {
