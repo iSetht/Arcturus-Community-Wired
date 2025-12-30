@@ -75,6 +75,7 @@ public class RoomUnit {
   private Deque<RoomTile> path = new LinkedList<>();
   private int handItem;
   private long handItemTimestamp;
+  private long lastRollerTime;
   private int walkTimeOut;
   private int effectId;
   private int effectEndTimestamp;
@@ -631,6 +632,23 @@ public class RoomUnit {
 
   public int getHandItem() {
     return this.handItem;
+  }
+
+  public long getLastRollerTime() {
+    return this.lastRollerTime;
+  }
+
+  public void setLastRollerTime(long lastRollerTime) {
+    this.lastRollerTime = lastRollerTime;
+  }
+
+  /**
+   * Checks if enough time has passed since the last roller movement to allow rolling again.
+   * This prevents desync issues where the client hasn't finished the roller animation.
+   * @return true if the unit can be rolled, false if still in roller cooldown
+   */
+  public boolean canBeRolled() {
+    return System.currentTimeMillis() - this.lastRollerTime >= 480;
   }
 
   public void setHandItem(int handItem) {

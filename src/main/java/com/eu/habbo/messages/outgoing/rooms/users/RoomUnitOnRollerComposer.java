@@ -52,6 +52,24 @@ public class RoomUnitOnRollerComposer extends MessageComposer {
         if (!this.room.isLoaded())
             return null;
 
+        // Early validation: Check if the roller movement is still valid before composing the packet
+        if (this.roller != null && room.getLayout() != null) {
+            // Check if the destination tile is blocked by another unit that moved there
+            if (this.newLocation.hasUnits() && !this.newLocation.getUnits().contains(this.roomUnit)) {
+                return null;
+            }
+            
+            // Check if the unit is still at the expected old location (they might have walked away)
+            if (this.roomUnit.getCurrentLocation() != this.oldLocation) {
+                return null;
+            }
+            
+            // Check if the unit started walking (user input should take priority over rollers)
+            if (this.roomUnit.isWalking()) {
+                return null;
+            }
+        }
+
         this.response.init(Outgoing.ObjectOnRollerComposer);
         this.response.appendInt(this.oldLocation.x);
         this.response.appendInt(this.oldLocation.y);
@@ -65,6 +83,9 @@ public class RoomUnitOnRollerComposer extends MessageComposer {
         this.response.appendString(this.newZ + "");
 
         if (this.roller != null && room.getLayout() != null) {
+            // Mark the unit as recently rolled to prevent desync/bungie effect
+            this.roomUnit.setLastRollerTime(System.currentTimeMillis());
+            
             // Update location immediately to prevent desync issues where the unit gets 
             // "stuck" rolling because subsequent roller cycles see the unit at the old position
             if (!this.roomUnit.isWalking() && this.roomUnit.getCurrentLocation() == this.oldLocation) {

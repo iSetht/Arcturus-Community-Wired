@@ -257,6 +257,11 @@ public class RoomRollerManager {
                 continue;
             }
 
+            // Prevent rolling if the unit is still in roller cooldown (prevents desync/bungie effect)
+            if (!unit.canBeRolled()) {
+                continue;
+            }
+
             double newZ = unit.getZ() + zOffset;
 
             if (roomUserRolledEvent != null && unit.getRoomUnitType() == RoomUnitType.USER) {

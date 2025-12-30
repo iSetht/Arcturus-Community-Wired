@@ -62,7 +62,6 @@ import com.eu.habbo.plugin.events.rooms.RoomLoadedEvent;
 import com.eu.habbo.plugin.events.rooms.RoomUnloadedEvent;
 import com.eu.habbo.plugin.events.rooms.RoomUnloadingEvent;
 
-import gnu.trove.TCollections;
 import gnu.trove.iterator.TIntObjectIterator;
 import gnu.trove.list.array.TIntArrayList;
 import gnu.trove.map.TIntIntMap;
@@ -118,12 +117,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   public final Object roomUnitLock = new Object();
   public final ConcurrentHashMap<RoomTile, THashSet<HabboItem>> tileCache = new ConcurrentHashMap<>();
   public final List<Integer> userVotes;
-  private final TIntObjectMap<Habbo> habboQueue = TCollections.synchronizedMap(
-      new TIntObjectHashMap<>(0));
-  private final TIntObjectMap<Bot> currentBots = TCollections.synchronizedMap(
-      new TIntObjectHashMap<>(0));
-  private final TIntObjectMap<Pet> currentPets = TCollections.synchronizedMap(
-      new TIntObjectHashMap<>(0));
   private final TIntArrayList rights;
   private final TIntIntHashMap mutedHabbos;
   private final TIntObjectHashMap<RoomBan> bannedHabbos;
@@ -399,8 +392,6 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
       try (Connection connection = Emulator.getDatabase().getDataSource().getConnection()) {
         synchronized (this.roomUnitLock) {
           this.unitManager.clear();
-          this.currentPets.clear();
-          this.currentBots.clear();
         }
 
         this.roomSpecialTypes = new RoomSpecialTypes();
@@ -516,7 +507,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   }
 
   private synchronized void loadBots(Connection connection) {
-    this.currentBots.clear();
+    this.unitManager.clearBots();
 
     try (PreparedStatement statement = connection.prepareStatement(
         "SELECT users.username AS owner_name, bots.* FROM bots INNER JOIN users ON bots.user_id = users.id WHERE room_id = ?")) {
@@ -555,7 +546,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   }
 
   private synchronized void loadPets(Connection connection) {
-    this.currentPets.clear();
+    this.unitManager.clearPets();
 
     try (PreparedStatement statement = connection.prepareStatement(
         "SELECT users.username as pet_owner_name, users_pets.* FROM users_pets INNER JOIN users ON users_pets.user_id = users.id WHERE room_id = ?")) {
@@ -798,9 +789,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
           this.itemManager.clear();
 
-          synchronized (this.habboQueue) {
-            this.habboQueue.clear();
-          }
+          this.unitManager.clearQueue();
 
           for (Habbo habbo : this.getCurrentHabbos().values()) {
             Emulator.getGameEnvironment().getRoomManager().leaveRoom(habbo, this);
@@ -810,9 +799,9 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
           this.unitManager.clear();
 
-          TIntObjectIterator<Bot> botIterator = this.currentBots.iterator();
+          TIntObjectIterator<Bot> botIterator = this.getCurrentBots().iterator();
 
-          for (int i = this.currentBots.size(); i-- > 0; ) {
+          for (int i = this.getCurrentBots().size(); i-- > 0; ) {
             try {
               botIterator.advance();
               botIterator.value().needsUpdate(true);
@@ -823,8 +812,8 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
             }
           }
 
-          this.currentBots.clear();
-          this.currentPets.clear();
+          this.unitManager.clearBots();
+          this.unitManager.clearPets();
         } catch (Exception e) {
           LOGGER.error("Caught exception", e);
         }
@@ -1478,7 +1467,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   }
 
   public TIntObjectMap<Habbo> getHabboQueue() {
-    return this.habboQueue;
+    return this.unitManager.getHabboQueue();
   }
 
   public TIntObjectMap<String> getFurniOwnerNames() {
@@ -1506,18 +1495,14 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   }
 
   public void addToQueue(Habbo habbo) {
-    synchronized (this.habboQueue) {
-      this.habboQueue.put(habbo.getHabboInfo().getId(), habbo);
-    }
+    this.unitManager.addToQueue(habbo);
   }
 
   public boolean removeFromQueue(Habbo habbo) {
     try {
       this.sendComposer(new HideDoorbellComposer(habbo.getHabboInfo().getUsername()).compose());
 
-      synchronized (this.habboQueue) {
-        return this.habboQueue.remove(habbo.getHabboInfo().getId()) != null;
-      }
+      return this.unitManager.removeFromQueue(habbo.getHabboInfo().getId()) != null;
     } catch (Exception e) {
       LOGGER.error("Caught exception", e);
     }
@@ -1526,11 +1511,11 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   }
 
   public TIntObjectMap<Bot> getCurrentBots() {
-    return this.currentBots;
+    return this.unitManager.getCurrentBots();
   }
 
   public TIntObjectMap<Pet> getCurrentPets() {
-    return this.currentPets;
+    return this.unitManager.getCurrentPets();
   }
 
   public THashSet<String> getWordFilterWords() {

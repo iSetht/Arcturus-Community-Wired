@@ -78,6 +78,33 @@ public class RoomUnitManager {
     }
 
     /**
+     * Clears all bots from the room.
+     */
+    public void clearBots() {
+        synchronized (this.room.roomUnitLock) {
+            this.currentBots.clear();
+        }
+    }
+
+    /**
+     * Clears all pets from the room.
+     */
+    public void clearPets() {
+        synchronized (this.room.roomUnitLock) {
+            this.currentPets.clear();
+        }
+    }
+
+    /**
+     * Clears the habbo queue.
+     */
+    public void clearQueue() {
+        synchronized (this.habboQueue) {
+            this.habboQueue.clear();
+        }
+    }
+
+    /**
      * Gets the current unit counter value.
      */
     public int getUnitCounter() {
