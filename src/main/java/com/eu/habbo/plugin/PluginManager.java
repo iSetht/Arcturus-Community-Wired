@@ -8,7 +8,6 @@ import com.eu.habbo.habbohotel.bots.BotManager;
 import com.eu.habbo.habbohotel.catalog.CatalogManager;
 import com.eu.habbo.habbohotel.catalog.TargetOffer;
 import com.eu.habbo.habbohotel.catalog.marketplace.MarketPlace;
-import com.eu.habbo.habbohotel.gameclients.GameClient;
 import com.eu.habbo.habbohotel.games.freeze.FreezeGame;
 import com.eu.habbo.habbohotel.games.tag.TagGame;
 import com.eu.habbo.habbohotel.items.ItemManager;
@@ -66,7 +65,7 @@ import java.util.stream.Collectors;
 
 public class PluginManager {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(GameClient.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(PluginManager.class);
 
     private final THashSet<HabboPlugin> plugins = new THashSet<>();
     private final THashSet<Method> methods = new THashSet<>();

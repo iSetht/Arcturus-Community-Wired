@@ -1,8 +1,6 @@
 package com.eu.habbo;
 
 import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.ConsoleAppender;
 import com.eu.habbo.core.*;
 import com.eu.habbo.core.consolecommands.ConsoleCommand;
 import com.eu.habbo.database.Database;
@@ -32,8 +30,6 @@ import java.util.regex.Pattern;
 public final class Emulator {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Emulator.class);
-    private static final String OS_NAME = (System.getProperty("os.name") != null ? System.getProperty("os.name") : "Unknown");
-    private static final String CLASS_PATH = (System.getProperty("java.class.path") != null ? System.getProperty("java.class.path") : "Unknown");
 
     public final static int MAJOR = 3;
     public final static int MINOR = 5;
@@ -92,16 +88,9 @@ public final class Emulator {
 
     public static void main(String[] args) throws Exception {
         try {
-            // Check if running on Windows and not in IntelliJ.
-            // If so, we need to reconfigure the console appender and enable Jansi for colors.
-            if (OS_NAME.startsWith("Windows") && !CLASS_PATH.contains("idea_rt.jar")) {
-                ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
-                ConsoleAppender<ILoggingEvent> appender = (ConsoleAppender<ILoggingEvent>) root.getAppender("Console");
-
-                appender.stop();
-                appender.setWithJansi(true);
-                appender.start();
-            }
+            // Disable Netty's use of sun.misc.Unsafe to avoid JVM warnings
+            System.setProperty("io.netty.noUnsafe", "true");
+            System.setProperty("io.netty.noPreferDirect", "true");
 
             Locale.setDefault(Locale.of("en"));
             setBuild();
