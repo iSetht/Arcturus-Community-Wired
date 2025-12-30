@@ -40,7 +40,7 @@ public class WiredConditionNotInTeam extends InteractionWiredCondition {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredHandler.getGson().toJson(new JsonData(
                 this.teamColor
         ));
     }
@@ -51,7 +51,7 @@ public class WiredConditionNotInTeam extends InteractionWiredCondition {
             String wiredData = set.getString("wired_data");
 
             if (wiredData.startsWith("{")) {
-                JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+                JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
                 this.teamColor = data.teamColor;
             } else {
                 if (!wiredData.equals(""))

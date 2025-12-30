@@ -147,7 +147,7 @@ public class WiredEffectBotWalkToFurni extends InteractionWiredEffect {
             }
         }
 
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(this.botName, itemIds, this.getDelay()));
+        return WiredHandler.getGson().toJson(new JsonData(this.botName, itemIds, this.getDelay()));
     }
 
     @Override
@@ -157,7 +157,7 @@ public class WiredEffectBotWalkToFurni extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if(wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
             this.botName = data.bot_name;
 

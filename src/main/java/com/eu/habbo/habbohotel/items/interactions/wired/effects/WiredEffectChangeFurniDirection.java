@@ -131,7 +131,7 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
     @Override
     public String getWiredData() {
         ArrayList<WiredChangeDirectionSetting> settings = new ArrayList<>(this.items.values());
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(this.startRotation, this.blockedAction, settings, this.getDelay()));
+        return WiredHandler.getGson().toJson(new JsonData(this.startRotation, this.blockedAction, settings, this.getDelay()));
     }
 
     @Override
@@ -142,7 +142,7 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if(wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
             this.startRotation = data.start_direction;
             this.blockedAction = data.blocked_action;

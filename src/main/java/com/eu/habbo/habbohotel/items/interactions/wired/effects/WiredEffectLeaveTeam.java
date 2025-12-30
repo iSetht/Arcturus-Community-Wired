@@ -56,7 +56,7 @@ public class WiredEffectLeaveTeam extends InteractionWiredEffect {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(this.getDelay()));
+        return WiredHandler.getGson().toJson(new JsonData(this.getDelay()));
     }
 
     @Override
@@ -64,7 +64,7 @@ public class WiredEffectLeaveTeam extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if(wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
         }
         else {

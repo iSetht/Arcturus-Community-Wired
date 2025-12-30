@@ -52,7 +52,7 @@ public class WiredConditionNotFurniTypeMatch extends InteractionWiredCondition {
     @Override
     public String getWiredData() {
         this.refresh();
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredHandler.getGson().toJson(new JsonData(
                 this.items.stream().map(HabboItem::getId).collect(Collectors.toList())
         ));
     }
@@ -63,7 +63,7 @@ public class WiredConditionNotFurniTypeMatch extends InteractionWiredCondition {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            WiredConditionFurniTypeMatch.JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, WiredConditionFurniTypeMatch.JsonData.class);
+            WiredConditionFurniTypeMatch.JsonData data = WiredHandler.getGson().fromJson(wiredData, WiredConditionFurniTypeMatch.JsonData.class);
 
             for(int id : data.itemIds) {
                 HabboItem item = room.getHabboItem(id);

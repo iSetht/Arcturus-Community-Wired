@@ -147,7 +147,7 @@ public class WiredEffectMoveFurniTo extends InteractionWiredEffect {
             this.items.remove(item);
         }
 
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredHandler.getGson().toJson(new JsonData(
                 this.direction,
                 this.spacing,
                 this.getDelay(),
@@ -191,7 +191,7 @@ public class WiredEffectMoveFurniTo extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.direction = data.direction;
             this.spacing = data.spacing;
             this.setDelay(data.delay);

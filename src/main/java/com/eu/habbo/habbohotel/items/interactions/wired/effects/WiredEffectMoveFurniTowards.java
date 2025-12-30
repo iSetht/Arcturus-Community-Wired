@@ -238,7 +238,7 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredHandler.getGson().toJson(new JsonData(
                 this.getDelay(),
                 this.items.stream().map(HabboItem::getId).collect(Collectors.toList())
         ));
@@ -250,7 +250,7 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
 
             for (Integer id: data.itemIds) {

@@ -1,6 +1,5 @@
 package com.eu.habbo.habbohotel.items.interactions.wired.triggers;
 
-import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.items.ICycleable;
 import com.eu.habbo.habbohotel.items.Item;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
@@ -41,7 +40,7 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements ICy
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredHandler.getGson().toJson(new JsonData(
             this.repeatTime
         ));
     }
@@ -51,7 +50,7 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements ICy
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.repeatTime = data.repeatTime;
         } else {
             if (wiredData.length() >= 1) {
@@ -149,13 +148,10 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements ICy
 
     @Override
     public void resetTimer() {
+        // Only reset the counter - do NOT trigger immediately
+        // The next cycle() call will trigger naturally when counter reaches repeatTime
+        // This prevents double-triggering when reset is called just before a natural cycle
         this.counter = 0;
-        if (this.getRoomId() != 0) {
-            Room room = Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId());
-            if (room != null && room.isLoaded()) {
-                WiredHandler.handle(this, null, room, new Object[]{this});
-            }
-        }
     }
 
     static class JsonData {

@@ -59,7 +59,7 @@ public class WiredTriggerBotReachedHabbo extends InteractionWiredTrigger {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredHandler.getGson().toJson(new JsonData(
             this.botName
         ));
     }
@@ -69,7 +69,7 @@ public class WiredTriggerBotReachedHabbo extends InteractionWiredTrigger {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.botName = data.botName;
         } else {
             this.botName = wiredData;

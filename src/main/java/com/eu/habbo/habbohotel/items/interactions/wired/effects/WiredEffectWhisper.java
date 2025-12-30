@@ -116,7 +116,7 @@ public class WiredEffectWhisper extends InteractionWiredEffect {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(this.message, this.getDelay()));
+        return WiredHandler.getGson().toJson(new JsonData(this.message, this.getDelay()));
     }
 
     @Override
@@ -124,7 +124,7 @@ public class WiredEffectWhisper extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if(wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
             this.message = data.message;
         }

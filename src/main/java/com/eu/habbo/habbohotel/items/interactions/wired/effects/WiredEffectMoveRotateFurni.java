@@ -92,7 +92,7 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
             this.items.remove(item);
         }
 
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredHandler.getGson().toJson(new JsonData(
                 this.direction,
                 this.rotation,
                 this.getDelay(),
@@ -106,7 +106,7 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
             this.direction = data.direction;
             this.rotation = data.rotation;

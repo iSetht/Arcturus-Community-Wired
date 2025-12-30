@@ -35,7 +35,7 @@ public class WiredConditionNotHabboCount extends InteractionWiredCondition {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredHandler.getGson().toJson(new JsonData(
                 this.lowerLimit,
                 this.upperLimit
         ));
@@ -46,7 +46,7 @@ public class WiredConditionNotHabboCount extends InteractionWiredCondition {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            WiredConditionHabboCount.JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, WiredConditionHabboCount.JsonData.class);
+            WiredConditionHabboCount.JsonData data = WiredHandler.getGson().fromJson(wiredData, WiredConditionHabboCount.JsonData.class);
             this.lowerLimit = data.lowerLimit;
             this.upperLimit = data.upperLimit;
         } else {

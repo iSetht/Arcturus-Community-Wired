@@ -60,7 +60,7 @@ public class WiredEffectGiveScoreToTeam extends InteractionWiredEffect {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(this.points, this.count, this.teamColor, this.getDelay()));
+        return WiredHandler.getGson().toJson(new JsonData(this.points, this.count, this.teamColor, this.getDelay()));
     }
 
     @Override
@@ -68,7 +68,7 @@ public class WiredEffectGiveScoreToTeam extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if(wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.points = data.score;
             this.count = data.count;
             this.teamColor = data.team;

@@ -99,7 +99,7 @@ public class WiredEffectGiveRespect extends InteractionWiredEffect {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(this.respects, this.getDelay()));
+        return WiredHandler.getGson().toJson(new JsonData(this.respects, this.getDelay()));
     }
 
     @Override
@@ -107,7 +107,7 @@ public class WiredEffectGiveRespect extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if(wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             this.respects = data.amount;
             this.setDelay(data.delay);
         }

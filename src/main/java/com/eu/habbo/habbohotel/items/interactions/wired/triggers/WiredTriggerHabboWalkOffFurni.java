@@ -44,7 +44,7 @@ public class WiredTriggerHabboWalkOffFurni extends InteractionWiredTrigger {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new WiredTriggerFurniStateToggled.JsonData(
+        return WiredHandler.getGson().toJson(new WiredTriggerFurniStateToggled.JsonData(
             this.items.stream().map(HabboItem::getId).collect(Collectors.toList())
         ));
     }
@@ -55,7 +55,7 @@ public class WiredTriggerHabboWalkOffFurni extends InteractionWiredTrigger {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
             for (Integer id: data.itemIds) {
                 HabboItem item = room.getHabboItem(id);
                 if (item != null) {
