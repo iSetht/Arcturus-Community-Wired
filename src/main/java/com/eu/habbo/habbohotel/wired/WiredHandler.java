@@ -260,18 +260,36 @@ public class WiredHandler {
         if (effect != null && (effect.canExecute(millis) || (roomUnit != null && effect.requiresTriggeringUser() && Emulator.getConfig().getBoolean("wired.custom.enabled", false) && effect.userCanExecute(roomUnit.getId(), millis)))) {
             executed = true;
             if (!effect.requiresTriggeringUser() || (roomUnit != null && effect.requiresTriggeringUser())) {
-                Emulator.getThreading().run(() -> {
+                long delay = effect.getDelay() * 500L;
+                
+                if (delay == 0) {
+                    // Execute immediately and synchronously for 0-delay effects
+                    // This prevents desync when multiple wired stacks trigger in the same cycle
                     if (room.isLoaded() && room.getHabbos().size() > 0) {
                         try {
-                            if (!effect.execute(roomUnit, room, stuff)) return;
-                            effect.setCooldown(millis);
+                            if (effect.execute(roomUnit, room, stuff)) {
+                                effect.setCooldown(millis);
+                                effect.activateBox(room, roomUnit, millis);
+                            }
                         } catch (Exception e) {
                             LOGGER.error("Caught exception", e);
                         }
-
-                        effect.activateBox(room, roomUnit, millis);
                     }
-                }, effect.getDelay() * 500L);
+                } else {
+                    // Only use async scheduling for effects with actual delays
+                    Emulator.getThreading().run(() -> {
+                        if (room.isLoaded() && room.getHabbos().size() > 0) {
+                            try {
+                                if (!effect.execute(roomUnit, room, stuff)) return;
+                                effect.setCooldown(millis);
+                            } catch (Exception e) {
+                                LOGGER.error("Caught exception", e);
+                            }
+
+                            effect.activateBox(room, roomUnit, millis);
+                        }
+                    }, delay);
+                }
             }
         }
 

@@ -125,16 +125,17 @@ public class WiredTriggerRepeaterLong extends InteractionWiredTrigger implements
     @Override
     public void cycle(Room room) {
         this.counter += 500;
-        long currentMillis = System.currentTimeMillis();
+        // Use room's cycle timestamp for consistent timing across all wired stacks
+        long cycleTimestamp = room.getCycleManager().getCycleTimestamp();
         String Key = Double.toString(this.getX()) + Double.toString(this.getY());
 
-        room.repeatersLastTick.putIfAbsent(Key, currentMillis);
+        room.repeatersLastTick.putIfAbsent(Key, cycleTimestamp);
 
-        if (this.counter >= this.repeatTime && room.repeatersLastTick.get(Key) < currentMillis - 4950) {
+        if (this.counter >= this.repeatTime && room.repeatersLastTick.get(Key) < cycleTimestamp - 4950) {
             this.counter = 0;
             if (this.getRoomId() != 0) {
                 if (room.isLoaded()) {
-                    room.repeatersLastTick.put(Key, currentMillis);
+                    room.repeatersLastTick.put(Key, cycleTimestamp);
                     WiredHandler.handle(this, null, room, new Object[]{this});
                 }
             }
