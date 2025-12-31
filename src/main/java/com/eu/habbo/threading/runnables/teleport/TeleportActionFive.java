@@ -30,8 +30,9 @@ class TeleportActionFive implements Runnable {
         unit.isTeleporting = false;
         unit.setCanWalk(true);
 
-        if (this.client.getHabbo().getHabboInfo().getCurrentRoom() != this.room)
+        if (this.client.getHabbo().getHabboInfo().getCurrentRoom() != this.room) {
             return;
+        }
 
         //if (!(this.currentTeleport instanceof InteractionTeleportTile))
 
