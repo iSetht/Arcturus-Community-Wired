@@ -388,14 +388,18 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
    * Checks if the room is currently loading data.
    */
   public boolean isLoadingInProgress() {
-    return this.loadingInProgress;
+    synchronized (this.loadLock) {
+      return this.loadingInProgress;
+    }
   }
 
   /**
    * Checks if the room data is loaded or is currently being loaded.
    */
   public boolean isLoadedOrLoading() {
-    return this.loaded || this.loadingInProgress;
+    synchronized (this.loadLock) {
+      return this.loaded || this.loadingInProgress;
+    }
   }
 
   /**
@@ -421,11 +425,14 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
    * If loading hasn't started yet, starts loading synchronously.
    */
   public void waitForLoad() {
-    if (this.loaded) {
-      return;
+    CompletableFuture<Void> future;
+    synchronized (this.loadLock) {
+      if (this.loaded) {
+        return;
+      }
+      future = this.loadingFuture;
     }
     
-    CompletableFuture<Void> future = this.loadingFuture;
     if (future != null) {
       try {
         future.join();
