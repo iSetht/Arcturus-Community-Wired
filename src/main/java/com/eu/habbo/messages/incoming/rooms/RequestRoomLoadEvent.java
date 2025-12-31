@@ -11,6 +11,12 @@ public class RequestRoomLoadEvent extends MessageHandler {
         int roomId = this.packet.readInt();
         String password = this.packet.readString();
 
+        // Reset stale loadingRoom if timestamp has expired (indicates failed/stuck load)
+        if (this.client.getHabbo().getHabboInfo().getLoadingRoom() != 0 
+            && this.client.getHabbo().getHabboStats().roomEnterTimestamp + 5000 < System.currentTimeMillis()) {
+            this.client.getHabbo().getHabboInfo().setLoadingRoom(0);
+        }
+
         if (this.client.getHabbo().getHabboInfo().getLoadingRoom() == 0 && this.client.getHabbo().getHabboStats().roomEnterTimestamp + 1000 < System.currentTimeMillis()) {
 
             // Start background loading early to reduce perceived load time

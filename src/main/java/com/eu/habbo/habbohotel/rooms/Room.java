@@ -444,29 +444,34 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     }
   }
 
-  public synchronized void loadData() {
+  public void loadData() {
+    CompletableFuture<Void> futureToWait = null;
+    boolean shouldLoad = false;
+    
     synchronized (this.loadLock) {
       if (this.loadingInProgress) {
-        // Wait for background loading to complete
-        CompletableFuture<Void> future = this.loadingFuture;
-        if (future != null) {
-          try {
-            future.join();
-          } catch (Exception e) {
-            LOGGER.error("Error waiting for room load", e);
-          }
-        }
-        return;
+        // Get the future to wait on outside the lock
+        futureToWait = this.loadingFuture;
+      } else if (this.preLoaded && !this.loaded) {
+        this.loadingInProgress = true;
+        shouldLoad = true;
       }
-      
-      if (!this.preLoaded || this.loaded) {
-        return;
-      }
-      
-      this.loadingInProgress = true;
     }
     
-    this.loadDataInternal();
+    // Wait for existing load outside the lock
+    if (futureToWait != null) {
+      try {
+        futureToWait.join();
+      } catch (Exception e) {
+        LOGGER.error("Error waiting for room load", e);
+      }
+      return;
+    }
+    
+    // Load if needed
+    if (shouldLoad) {
+      this.loadDataInternal();
+    }
   }
 
   /**
@@ -474,123 +479,127 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
    * Uses parallel loading for independent operations to reduce total load time.
    */
   private void loadDataInternal() {
+    // Check if already loaded (with lock)
     synchronized (this.loadLock) {
       if (this.loaded) {
         this.loadingInProgress = false;
         return;
       }
-
       this.preLoaded = false;
+    }
 
-      try (Connection connection = Emulator.getDatabase().getDataSource().getConnection()) {
-        synchronized (this.roomUnitLock) {
-          this.unitManager.clear();
-        }
+    // Perform loading WITHOUT holding the lock to avoid deadlocks
+    try (Connection connection = Emulator.getDatabase().getDataSource().getConnection()) {
+      synchronized (this.roomUnitLock) {
+        this.unitManager.clear();
+      }
 
-        this.roomSpecialTypes = new RoomSpecialTypes();
+      this.roomSpecialTypes = new RoomSpecialTypes();
 
-        // Phase 1: Load layout first (required for bots/pets positioning)
-        try {
-          this.loadLayout();
-        } catch (Exception e) {
-          LOGGER.error("Caught exception loading layout", e);
-        }
-
-        // Phase 2: Load items and rights in parallel (independent operations)
-        CompletableFuture<Void> itemsFuture = CompletableFuture.runAsync(() -> {
-          try (Connection itemConnection = Emulator.getDatabase().getDataSource().getConnection()) {
-            this.loadItems(itemConnection);
-          } catch (Exception e) {
-            LOGGER.error("Caught exception loading items", e);
-          }
-        }, Emulator.getThreading().getService());
-
-        CompletableFuture<Void> rightsFuture = CompletableFuture.runAsync(() -> {
-          try (Connection rightsConnection = Emulator.getDatabase().getDataSource().getConnection()) {
-            this.loadRights(rightsConnection);
-          } catch (Exception e) {
-            LOGGER.error("Caught exception loading rights", e);
-          }
-        }, Emulator.getThreading().getService());
-
-        CompletableFuture<Void> wordFilterFuture = CompletableFuture.runAsync(() -> {
-          try (Connection wordFilterConnection = Emulator.getDatabase().getDataSource().getConnection()) {
-            this.loadWordFilter(wordFilterConnection);
-          } catch (Exception e) {
-            LOGGER.error("Caught exception loading word filter", e);
-          }
-        }, Emulator.getThreading().getService());
-
-        // Wait for items to be loaded before loading wired data (wired depends on items)
-        try {
-          itemsFuture.join();
-        } catch (Exception e) {
-          LOGGER.error("Error waiting for items to load", e);
-        }
-
-        // Phase 3: Load heightmap after items are loaded (depends on items for stack heights)
-        try {
-          this.loadHeightmap();
-        } catch (Exception e) {
-          LOGGER.error("Caught exception loading heightmap", e);
-        }
-
-        // Phase 4: Load bots, pets, and wired data in parallel (all depend on layout + items)
-        CompletableFuture<Void> botsFuture = CompletableFuture.runAsync(() -> {
-          try (Connection botsConnection = Emulator.getDatabase().getDataSource().getConnection()) {
-            this.loadBots(botsConnection);
-          } catch (Exception e) {
-            LOGGER.error("Caught exception loading bots", e);
-          }
-        }, Emulator.getThreading().getService());
-
-        CompletableFuture<Void> petsFuture = CompletableFuture.runAsync(() -> {
-          try (Connection petsConnection = Emulator.getDatabase().getDataSource().getConnection()) {
-            this.loadPets(petsConnection);
-          } catch (Exception e) {
-            LOGGER.error("Caught exception loading pets", e);
-          }
-        }, Emulator.getThreading().getService());
-
-        CompletableFuture<Void> wiredFuture = CompletableFuture.runAsync(() -> {
-          try (Connection wiredConnection = Emulator.getDatabase().getDataSource().getConnection()) {
-            this.loadWiredData(wiredConnection);
-          } catch (Exception e) {
-            LOGGER.error("Caught exception loading wired data", e);
-          }
-        }, Emulator.getThreading().getService());
-
-        // Wait for all parallel operations to complete
-        try {
-          CompletableFuture.allOf(rightsFuture, wordFilterFuture, botsFuture, petsFuture, wiredFuture).join();
-        } catch (Exception e) {
-          LOGGER.error("Error waiting for parallel room data loading", e);
-        }
-
-        this.cycleManager.resetIdleCycles();
-        this.loaded = true;
-
-        this.roomCycleTask = Emulator.getThreading().getService()
-            .scheduleAtFixedRate(this, 500, 500, TimeUnit.MILLISECONDS);
+      // Phase 1: Load layout first (required for bots/pets positioning)
+      try {
+        this.loadLayout();
       } catch (Exception e) {
-        LOGGER.error("Caught exception during room load", e);
+        LOGGER.error("Caught exception loading layout", e);
       }
 
-      this.traxManager = new TraxManager(this);
-
-      if (this.jukeboxActive) {
-        this.traxManager.play(0);
-        for (HabboItem item : this.roomSpecialTypes.getItemsOfType(InteractionJukeBox.class)) {
-          item.setExtradata("1");
-          this.updateItem(item);
+      // Phase 2: Load items and rights in parallel (independent operations)
+      CompletableFuture<Void> itemsFuture = CompletableFuture.runAsync(() -> {
+        try (Connection itemConnection = Emulator.getDatabase().getDataSource().getConnection()) {
+          this.loadItems(itemConnection);
+        } catch (Exception e) {
+          LOGGER.error("Caught exception loading items", e);
         }
+      }, Emulator.getThreading().getService());
+
+      CompletableFuture<Void> rightsFuture = CompletableFuture.runAsync(() -> {
+        try (Connection rightsConnection = Emulator.getDatabase().getDataSource().getConnection()) {
+          this.loadRights(rightsConnection);
+        } catch (Exception e) {
+          LOGGER.error("Caught exception loading rights", e);
+        }
+      }, Emulator.getThreading().getService());
+
+      CompletableFuture<Void> wordFilterFuture = CompletableFuture.runAsync(() -> {
+        try (Connection wordFilterConnection = Emulator.getDatabase().getDataSource().getConnection()) {
+          this.loadWordFilter(wordFilterConnection);
+        } catch (Exception e) {
+          LOGGER.error("Caught exception loading word filter", e);
+        }
+      }, Emulator.getThreading().getService());
+
+      // Wait for items to be loaded before loading wired data (wired depends on items)
+      try {
+        itemsFuture.join();
+      } catch (Exception e) {
+        LOGGER.error("Error waiting for items to load", e);
       }
 
-      for (HabboItem item : this.roomSpecialTypes.getItemsOfType(InteractionFireworks.class)) {
+      // Phase 3: Load heightmap after items are loaded (depends on items for stack heights)
+      try {
+        this.loadHeightmap();
+      } catch (Exception e) {
+        LOGGER.error("Caught exception loading heightmap", e);
+      }
+
+      // Phase 4: Load bots, pets, and wired data in parallel (all depend on layout + items)
+      CompletableFuture<Void> botsFuture = CompletableFuture.runAsync(() -> {
+        try (Connection botsConnection = Emulator.getDatabase().getDataSource().getConnection()) {
+          this.loadBots(botsConnection);
+        } catch (Exception e) {
+          LOGGER.error("Caught exception loading bots", e);
+        }
+      }, Emulator.getThreading().getService());
+
+      CompletableFuture<Void> petsFuture = CompletableFuture.runAsync(() -> {
+        try (Connection petsConnection = Emulator.getDatabase().getDataSource().getConnection()) {
+          this.loadPets(petsConnection);
+        } catch (Exception e) {
+          LOGGER.error("Caught exception loading pets", e);
+        }
+      }, Emulator.getThreading().getService());
+
+      CompletableFuture<Void> wiredFuture = CompletableFuture.runAsync(() -> {
+        try (Connection wiredConnection = Emulator.getDatabase().getDataSource().getConnection()) {
+          this.loadWiredData(wiredConnection);
+        } catch (Exception e) {
+          LOGGER.error("Caught exception loading wired data", e);
+        }
+      }, Emulator.getThreading().getService());
+
+      // Wait for all parallel operations to complete
+      try {
+        CompletableFuture.allOf(rightsFuture, wordFilterFuture, botsFuture, petsFuture, wiredFuture).join();
+      } catch (Exception e) {
+        LOGGER.error("Error waiting for parallel room data loading", e);
+      }
+
+      this.cycleManager.resetIdleCycles();
+
+      this.roomCycleTask = Emulator.getThreading().getService()
+          .scheduleAtFixedRate(this, 500, 500, TimeUnit.MILLISECONDS);
+    } catch (Exception e) {
+      LOGGER.error("Caught exception during room load", e);
+    }
+
+    this.traxManager = new TraxManager(this);
+
+    if (this.jukeboxActive) {
+      this.traxManager.play(0);
+      for (HabboItem item : this.roomSpecialTypes.getItemsOfType(InteractionJukeBox.class)) {
         item.setExtradata("1");
         this.updateItem(item);
       }
-      
+    }
+
+    for (HabboItem item : this.roomSpecialTypes.getItemsOfType(InteractionFireworks.class)) {
+      item.setExtradata("1");
+      this.updateItem(item);
+    }
+    
+    // Set loaded flag with lock
+    synchronized (this.loadLock) {
+      this.loaded = true;
       this.loadingInProgress = false;
       this.loadingFuture = null;
     }
