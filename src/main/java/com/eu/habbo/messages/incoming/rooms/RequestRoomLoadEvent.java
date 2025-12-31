@@ -13,6 +13,15 @@ public class RequestRoomLoadEvent extends MessageHandler {
 
         if (this.client.getHabbo().getHabboInfo().getLoadingRoom() == 0 && this.client.getHabbo().getHabboStats().roomEnterTimestamp + 1000 < System.currentTimeMillis()) {
 
+            // Start background loading early to reduce perceived load time
+            Room roomToLoad = Emulator.getGameEnvironment().getRoomManager().getRoom(roomId);
+            if (roomToLoad == null) {
+                roomToLoad = Emulator.getGameEnvironment().getRoomManager().loadRoom(roomId);
+            }
+            if (roomToLoad != null && roomToLoad.isPreLoaded() && !roomToLoad.isLoadedOrLoading()) {
+                roomToLoad.startBackgroundLoad();
+            }
+
             Room room = this.client.getHabbo().getHabboInfo().getCurrentRoom();
             if (room != null) {
                 Emulator.getGameEnvironment().getRoomManager().logExit(this.client.getHabbo());

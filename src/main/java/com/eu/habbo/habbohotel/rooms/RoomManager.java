@@ -290,6 +290,14 @@ public class RoomManager {
         return loadRoom(id, false);
     }
 
+    /**
+     * Loads a room, optionally loading its data.
+     * If the room is already being loaded in the background, this will wait for that to complete.
+     * 
+     * @param id The room ID
+     * @param loadData Whether to load room data (items, bots, pets, etc.)
+     * @return The loaded room, or null if not found
+     */
     public Room loadRoom(int id, boolean loadData) {
         Room room = null;
 
@@ -301,7 +309,10 @@ public class RoomManager {
             room = this.activeRooms.get(id);
 
             if (loadData) {
-                if (room.isPreLoaded() && !room.isLoaded()) {
+                if (room.isLoadingInProgress()) {
+                    // Wait for background loading to complete
+                    room.waitForLoad();
+                } else if (room.isPreLoaded() && !room.isLoaded()) {
                     room.loadData();
                 }
             }

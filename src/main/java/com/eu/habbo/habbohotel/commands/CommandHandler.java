@@ -201,6 +201,7 @@ public class CommandHandler {
         addCommand(new EventCommand());
         addCommand(new FacelessCommand());
         addCommand(new FastwalkCommand());
+        addCommand(new FillRoomCommand());
         addCommand(new FilterWordCommand());
         addCommand(new FreezeBotsCommand());
         addCommand(new FreezeCommand());
