@@ -240,10 +240,11 @@ public class RoomUnit {
 
       HabboItem item = room.getTopItemAt(next.x, next.y);
       boolean canSitNextTile = room.canSitAt(next.x, next.y);
+      boolean canLayNextTile = room.canLayAt(next.x, next.y);
 
-      if (!(this.path.isEmpty() && canSitNextTile)) {
+      if (!(this.path.isEmpty() && (canSitNextTile || canLayNextTile))) {
         double height = next.getStackHeight() - this.currentLocation.getStackHeight();
-        if (canMoveToTile(room, next, height, canSitNextTile)) {
+        if (canMoveToTile(room, next, height, canSitNextTile, canLayNextTile)) {
           this.path.clear();
           this.status.remove(RoomUnitStatus.MOVE);
           return false;
@@ -258,7 +259,7 @@ public class RoomUnit {
         }
       }
 
-      if (next.equals(this.goalLocation) && next.state == RoomTileState.SIT && !overrideChecks && (
+      if (next.equals(this.goalLocation) && (next.state == RoomTileState.SIT || next.state == RoomTileState.LAY) && !overrideChecks && (
           item == null || item.getZ() - this.getZ() > RoomLayout.MAXIMUM_STEP_HEIGHT)) {
         this.status.remove(RoomUnitStatus.MOVE);
         return false;
@@ -379,10 +380,10 @@ public class RoomUnit {
   }
 
   private static boolean canMoveToTile(Room room, RoomTile next, double height,
-      boolean canSitNextTile) {
+      boolean canSitNextTile, boolean canLayNextTile) {
     return (!room.tileWalkable(next) || (!RoomLayout.ALLOW_FALLING
         && height < -RoomLayout.MAXIMUM_STEP_HEIGHT) || (next.state == RoomTileState.OPEN
-        && height > RoomLayout.MAXIMUM_STEP_HEIGHT)) && !canSitNextTile;
+        && height > RoomLayout.MAXIMUM_STEP_HEIGHT)) && !canSitNextTile && !canLayNextTile;
   }
 
   public int getId() {

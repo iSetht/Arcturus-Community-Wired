@@ -379,6 +379,7 @@ public class RoomUnitManager {
             } else if (topItem != null && topItem.getBaseItem().allowLay()) {
                 habbo.getRoomUnit().setZ(topItem.getZ());
                 habbo.getRoomUnit().setPreviousLocationZ(topItem.getZ());
+                habbo.getRoomUnit().setRotation(RoomUserRotation.fromValue(topItem.getRotation() % 4));
                 habbo.getRoomUnit().setStatus(RoomUnitStatus.LAY, 
                     String.valueOf(Item.getCurrentHeight(topItem)));
             } else {
