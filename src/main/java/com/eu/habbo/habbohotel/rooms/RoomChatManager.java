@@ -20,6 +20,7 @@ import com.eu.habbo.messages.outgoing.users.MutedWhisperComposer;
 import com.eu.habbo.plugin.events.users.UserIdleEvent;
 import com.eu.habbo.plugin.events.users.UsernameTalkEvent;
 import com.eu.habbo.threading.runnables.YouAreAPirate;
+import com.eu.habbo.util.pathfinding.Rotation;
 import gnu.trove.iterator.TIntObjectIterator;
 import gnu.trove.map.hash.TIntIntHashMap;
 import gnu.trove.set.hash.THashSet;
@@ -452,6 +453,32 @@ public class RoomChatManager {
                     if (clearPrefixMessage != null && !h.getHabboStats().preferOldChat) {
                         h.getClient().sendResponse(clearPrefixMessage);
                     }
+                    
+                    // Turn head toward speaker if conditions are met
+                    if (!h.equals(habbo)) {
+                        RoomUnit roomUnit = h.getRoomUnit();
+                        if (!roomUnit.isWalking() && !roomUnit.hasStatus(RoomUnitStatus.MOVE) 
+                            && !roomUnit.hasStatus(RoomUnitStatus.LAY) && !roomUnit.isIdle() 
+                            && !roomUnit.isInvisible()) {
+                            RoomUserRotation targetRotation = RoomUserRotation.values()[
+                                Rotation.Calculate(roomUnit.getX(), roomUnit.getY(), 
+                                    habbo.getRoomUnit().getX(), habbo.getRoomUnit().getY())];
+                            // Only turn head if speaker is within peripheral vision (1 rotation step)
+                            if (RoomUserRotation.rotationDistance(roomUnit.getBodyRotation().getValue(), 
+                                targetRotation.getValue()) <= 1) {
+                                roomUnit.setHeadRotation(targetRotation);
+                                roomUnit.statusUpdate(true);
+                                
+                                // Schedule head reset after 2 seconds
+                                Emulator.getThreading().run(() -> {
+                                    if (roomUnit.isInRoom() && !roomUnit.isWalking() && !roomUnit.isIdle()) {
+                                        roomUnit.setHeadRotation(roomUnit.getBodyRotation());
+                                        roomUnit.statusUpdate(true);
+                                    }
+                                }, 2000);
+                            }
+                        }
+                    }
                 }
                 continue;
             }
@@ -476,6 +503,32 @@ public class RoomChatManager {
                 h.getClient().sendResponse(message);
                 if (clearPrefixMessage != null && !h.getHabboStats().preferOldChat) {
                     h.getClient().sendResponse(clearPrefixMessage);
+                }
+                
+                // Turn head toward speaker if conditions are met
+                if (!h.equals(habbo)) {
+                    RoomUnit roomUnit = h.getRoomUnit();
+                    if (!roomUnit.isWalking() && !roomUnit.hasStatus(RoomUnitStatus.MOVE) 
+                        && !roomUnit.hasStatus(RoomUnitStatus.LAY) && !roomUnit.isIdle() 
+                        && !roomUnit.isInvisible()) {
+                        RoomUserRotation targetRotation = RoomUserRotation.values()[
+                            Rotation.Calculate(roomUnit.getX(), roomUnit.getY(), 
+                                habbo.getRoomUnit().getX(), habbo.getRoomUnit().getY())];
+                        // Only turn head if speaker is within peripheral vision (1 rotation step)
+                        if (RoomUserRotation.rotationDistance(roomUnit.getBodyRotation().getValue(), 
+                            targetRotation.getValue()) <= 1) {
+                            roomUnit.setHeadRotation(targetRotation);
+                            roomUnit.statusUpdate(true);
+                            
+                            // Schedule head reset after 2 seconds
+                            Emulator.getThreading().run(() -> {
+                                if (roomUnit.isInRoom() && !roomUnit.isWalking() && !roomUnit.isIdle()) {
+                                    roomUnit.setHeadRotation(roomUnit.getBodyRotation());
+                                    roomUnit.statusUpdate(true);
+                                }
+                            }, 2000);
+                        }
+                    }
                 }
                 continue;
             }
