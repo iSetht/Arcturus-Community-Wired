@@ -24,6 +24,7 @@ import com.eu.habbo.habbohotel.users.clothingvalidation.ClothingValidationManage
 import com.eu.habbo.habbohotel.users.HabboInventory;
 import com.eu.habbo.habbohotel.users.HabboManager;
 import com.eu.habbo.habbohotel.users.subscriptions.SubscriptionHabboClub;
+import com.eu.habbo.habbohotel.wired.core.WiredEngine;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.highscores.WiredHighscoreManager;
 import com.eu.habbo.messages.PacketManager;
@@ -117,6 +118,10 @@ public class PluginManager {
         RoomManager.HOME_ROOM_ID = Emulator.getConfig().getInt("hotel.home.room");
         WiredManager.MAXIMUM_FURNI_SELECTION = Emulator.getConfig().getInt("hotel.wired.furni.selection.count");
         WiredManager.TELEPORT_DELAY = Emulator.getConfig().getInt("wired.effect.teleport.delay", 500);
+        WiredEngine.MAX_RECURSION_DEPTH = Emulator.getConfig().getInt("wired.abuse.max.recursion.depth", 10);
+        WiredEngine.MAX_EVENTS_PER_WINDOW = Emulator.getConfig().getInt("wired.abuse.max.events.per.window", 100);
+        WiredEngine.RATE_LIMIT_WINDOW_MS = Emulator.getConfig().getInt("wired.abuse.rate.limit.window.ms", 10000);
+        WiredEngine.WIRED_BAN_DURATION_MS = Emulator.getConfig().getInt("wired.abuse.ban.duration.ms", 600000);
         NavigatorManager.MAXIMUM_RESULTS_PER_PAGE = Emulator.getConfig().getInt("hotel.navigator.search.maxresults");
         NavigatorManager.CATEGORY_SORT_USING_ORDER_NUM = Emulator.getConfig().getBoolean("hotel.navigator.sort.ordernum");
         RoomChatMessage.MAXIMUM_LENGTH = Emulator.getConfig().getInt("hotel.chat.max.length");

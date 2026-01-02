@@ -3,14 +3,20 @@ package com.eu.habbo.habbohotel.wired.core;
 import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredCondition;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
+import com.eu.habbo.habbohotel.items.interactions.InteractionWiredExtra;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
 import com.eu.habbo.habbohotel.rooms.Room;
+import com.eu.habbo.habbohotel.rooms.RoomUnit;
+import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredConditionOperator;
 import com.eu.habbo.habbohotel.wired.api.IWiredCondition;
 import com.eu.habbo.habbohotel.wired.api.IWiredEffect;
 import com.eu.habbo.habbohotel.wired.api.WiredStack;
+import com.eu.habbo.messages.outgoing.generic.alerts.BubbleAlertComposer;
+import com.eu.habbo.messages.outgoing.generic.alerts.GenericAlertComposer;
 import com.eu.habbo.plugin.events.furniture.wired.WiredStackExecutedEvent;
 import com.eu.habbo.plugin.events.furniture.wired.WiredStackTriggeredEvent;
+import gnu.trove.map.hash.THashMap;
 import gnu.trove.set.hash.THashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +56,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class WiredEngine {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WiredEngine.class);
+    
+    /** Maximum recursion depth to prevent infinite loops (e.g., collision + chase) */
+    public static int MAX_RECURSION_DEPTH = 10;
+    
+    /** Maximum events of same type per room within rate limit window before banning */
+    public static int MAX_EVENTS_PER_WINDOW = 100;
+    
+    /** Time window for counting rapid events (milliseconds) */
+    public static long RATE_LIMIT_WINDOW_MS = 10000;
+    
+    /** Duration to ban wired execution in a room after abuse detected (milliseconds) */
+    public static long WIRED_BAN_DURATION_MS = 600000;
 
     private final WiredServices services;
     private final WiredStackIndex index;
@@ -57,6 +75,15 @@ public final class WiredEngine {
     
     /** Track unseen effect indices per room+tile for round-robin selection */
     private final ConcurrentHashMap<String, Integer> unseenIndices;
+    
+    /** Track recursion depth per room to prevent infinite loops */
+    private final ConcurrentHashMap<Integer, Integer> roomRecursionDepth;
+    
+    /** Track event timestamps per room+eventType for rate limiting: key = "roomId:eventType" */
+    private final ConcurrentHashMap<String, EventRateTracker> eventRateLimiters;
+    
+    /** Track rooms that are banned from wired execution: roomId -> ban expiry timestamp */
+    private final ConcurrentHashMap<Integer, Long> bannedRooms;
 
     /**
      * Create a new wired engine.
@@ -74,6 +101,9 @@ public final class WiredEngine {
         this.index = index;
         this.maxStepsPerStack = maxStepsPerStack;
         this.unseenIndices = new ConcurrentHashMap<>();
+        this.roomRecursionDepth = new ConcurrentHashMap<>();
+        this.eventRateLimiters = new ConcurrentHashMap<>();
+        this.bannedRooms = new ConcurrentHashMap<>();
     }
 
     /**
@@ -91,6 +121,47 @@ public final class WiredEngine {
         if (room == null || !room.isLoaded()) {
             return false;
         }
+        
+        int roomId = room.getId();
+        
+        // Check if room is banned from wired execution
+        if (isRoomBanned(roomId)) {
+            return false;
+        }
+        
+        // Check rate limiting to prevent rapid-fire event spam (e.g., collision + chase loop)
+        if (isRateLimited(roomId, room, event.getType())) {
+            // Room has been banned, all events will be dropped
+            return false;
+        }
+        
+        // Check and increment recursion depth to prevent infinite loops
+        int currentDepth = roomRecursionDepth.getOrDefault(roomId, 0);
+        if (currentDepth >= MAX_RECURSION_DEPTH) {
+            LOGGER.warn("Wired recursion limit reached in room {} (depth: {}). " +
+                    "Possible infinite loop detected (e.g., collision + chase). Aborting.", roomId, currentDepth);
+            debug(room, "RECURSION LIMIT REACHED - aborting to prevent crash");
+            return false;
+        }
+        roomRecursionDepth.put(roomId, currentDepth + 1);
+        
+        try {
+            return handleEventInternal(event, room);
+        } finally {
+            // Decrement recursion depth
+            int newDepth = roomRecursionDepth.getOrDefault(roomId, 1) - 1;
+            if (newDepth <= 0) {
+                roomRecursionDepth.remove(roomId);
+            } else {
+                roomRecursionDepth.put(roomId, newDepth);
+            }
+        }
+    }
+    
+    /**
+     * Internal event handling after recursion check.
+     */
+    private boolean handleEventInternal(WiredEvent event, Room room) {
 
         // Find candidate stacks for this event type
         List<WiredStack> stacks = index.getStacks(room, event.getType());
@@ -142,12 +213,21 @@ public final class WiredEngine {
 
         // Initial step for trigger
         state.step();
+        
+        // Activate the trigger box animation
+        if (stack.triggerItem() instanceof InteractionWiredTrigger) {
+            InteractionWiredTrigger trigger = (InteractionWiredTrigger) stack.triggerItem();
+            trigger.activateBox(room, event.getActor().orElse(null), currentTime);
+        }
 
         debug(room, "Trigger matched: {} at item {} (conditions: {}, effects: {})", 
               event.getType(), 
               stack.triggerItem() != null ? stack.triggerItem().getId() : "null",
               stack.conditions().size(),
               stack.effects().size());
+        
+        // Activate extras (for their animation)
+        activateExtras(room, stack.triggerItem(), event.getActor().orElse(null), currentTime);
 
         // Evaluate conditions
         if (stack.hasConditions()) {
@@ -297,12 +377,19 @@ public final class WiredEngine {
             int delay = effect.getDelay();
             if (delay > 0) {
                 // Schedule delayed execution
-                scheduleDelayedEffect(effect, ctx, delay);
+                scheduleDelayedEffect(effect, ctx, delay, currentTime);
             } else {
                 // Execute immediately
                 ctx.state().step();
                 try {
                     effect.execute(ctx);
+                    
+                    // Activate box animation after execution
+                    if (effect instanceof InteractionWiredEffect) {
+                        InteractionWiredEffect wiredEffect = (InteractionWiredEffect) effect;
+                        wiredEffect.setCooldown(currentTime);
+                        wiredEffect.activateBox(ctx.room(), ctx.actor().orElse(null), currentTime);
+                    }
                 } catch (Exception e) {
                     LOGGER.warn("Error executing effect: {}", e.getMessage());
                 }
@@ -313,13 +400,26 @@ public final class WiredEngine {
     /**
      * Schedule a delayed effect execution.
      */
-    private void scheduleDelayedEffect(IWiredEffect effect, WiredContext ctx, int delay) {
+    private void scheduleDelayedEffect(IWiredEffect effect, WiredContext ctx, int delay, long currentTime) {
         // Delay is in 500ms ticks
         long delayMs = delay * 500L;
+        Room room = ctx.room();
+        RoomUnit actor = ctx.actor().orElse(null);
         
         Emulator.getThreading().run(() -> {
+            if (!room.isLoaded() || room.getHabbos().isEmpty()) {
+                return;
+            }
+            
             try {
                 effect.execute(ctx);
+                
+                // Activate box animation after execution
+                if (effect instanceof InteractionWiredEffect) {
+                    InteractionWiredEffect wiredEffect = (InteractionWiredEffect) effect;
+                    wiredEffect.setCooldown(System.currentTimeMillis());
+                    wiredEffect.activateBox(room, actor, System.currentTimeMillis());
+                }
             } catch (Exception e) {
                 LOGGER.warn("Error executing delayed effect: {}", e.getMessage());
             }
@@ -416,6 +516,24 @@ public final class WiredEngine {
     }
 
     /**
+     * Activate all extras at the trigger item's location for their animation.
+     */
+    private void activateExtras(Room room, HabboItem triggerItem, RoomUnit roomUnit, long millis) {
+        if (triggerItem == null || room.getRoomSpecialTypes() == null) {
+            return;
+        }
+        
+        THashSet<InteractionWiredExtra> extras = room.getRoomSpecialTypes().getExtras(
+                triggerItem.getX(), triggerItem.getY());
+        
+        if (extras != null) {
+            for (InteractionWiredExtra extra : extras) {
+                extra.activateBox(room, roomUnit, millis);
+            }
+        }
+    }
+
+    /**
      * Get the services used by this engine.
      * @return the wired services
      */
@@ -444,5 +562,174 @@ public final class WiredEngine {
      */
     public void clearUnseenCache() {
         unseenIndices.clear();
+    }
+    
+    /**
+     * Clear recursion tracking for a specific room.
+     * Should be called when a room is unloaded.
+     * @param roomId the room ID
+     */
+    public void clearRoomRecursionDepth(int roomId) {
+        roomRecursionDepth.remove(roomId);
+    }
+    
+    /**
+     * Clear all recursion tracking.
+     */
+    public void clearAllRecursionDepth() {
+        roomRecursionDepth.clear();
+    }
+    
+    /**
+     * Get the current recursion depth for a room (for debugging).
+     * @param roomId the room ID
+     * @return the current recursion depth, or 0 if not tracked
+     */
+    public int getRecursionDepth(int roomId) {
+        return roomRecursionDepth.getOrDefault(roomId, 0);
+    }
+    
+    /**
+     * Clear rate limiters for a specific room.
+     * Should be called when a room is unloaded.
+     * @param roomId the room ID
+     */
+    public void clearRoomRateLimiters(int roomId) {
+        String prefix = roomId + ":";
+        eventRateLimiters.keySet().removeIf(key -> key.startsWith(prefix));
+    }
+    
+    /**
+     * Clear room ban for a specific room.
+     * Should be called when a room is unloaded.
+     * @param roomId the room ID
+     */
+    public void clearRoomBan(int roomId) {
+        bannedRooms.remove(roomId);
+    }
+    
+    /**
+     * Check if a room is currently banned from wired execution.
+     * @param roomId the room ID
+     * @return true if wired is banned in this room
+     */
+    private boolean isRoomBanned(int roomId) {
+        Long banExpiry = bannedRooms.get(roomId);
+        if (banExpiry == null) {
+            return false;
+        }
+        
+        if (System.currentTimeMillis() >= banExpiry) {
+            // Ban expired, remove it
+            bannedRooms.remove(roomId);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Ban wired execution in a room for WIRED_BAN_DURATION_MS.
+     * Sends alerts to all users in the room and a scripter alert to staff.
+     * @param roomId the room ID
+     * @param room the room object (for sending alerts)
+     */
+    private void banRoom(int roomId, Room room) {
+        long banExpiry = System.currentTimeMillis() + WIRED_BAN_DURATION_MS;
+        bannedRooms.put(roomId, banExpiry);
+        
+        long banMinutes = WIRED_BAN_DURATION_MS / 60000;
+        
+        // Send alert to all users in the room
+        String roomAlertMessage = Emulator.getTexts().getValue("wired.abuse.room.alert")
+                .replace("%minutes%", String.valueOf(banMinutes));
+        room.sendComposer(new GenericAlertComposer(roomAlertMessage).compose());
+        
+        // Send scripter bubble alert to staff with room link
+        THashMap<String, String> keys = new THashMap<>();
+        keys.put("title", Emulator.getTexts().getValue("wired.abuse.staff.title"));
+        keys.put("message", Emulator.getTexts().getValue("wired.abuse.staff.message")
+                .replace("%roomname%", room.getName())
+                .replace("%owner%", room.getOwnerName())
+                .replace("%minutes%", String.valueOf(banMinutes)));
+        keys.put("linkUrl", "event:navigator/goto/" + roomId);
+        keys.put("linkTitle", Emulator.getTexts().getValue("wired.abuse.staff.link"));
+        Emulator.getGameEnvironment().getHabboManager().sendPacketToHabbosWithPermission(
+                new BubbleAlertComposer("admin.staffalert", keys).compose(), 
+                "acc_modtool_room_info"
+        );
+        
+        LOGGER.warn("Wired abuse detected in room {} ({}). Owner: {}. Wired banned for {} minutes.",
+                roomId, room.getName(), room.getOwnerName(), banMinutes);
+    }
+    
+    /**
+     * Check if an event should be rate-limited.
+     * If rate limit exceeded, bans the room and sends alerts.
+     * @param roomId the room ID
+     * @param room the room object (for sending alerts if banned)
+     * @param eventType the event type
+     * @return true if the event should be blocked due to rate limiting
+     */
+    private boolean isRateLimited(int roomId, Room room, WiredEvent.Type eventType) {
+        String key = roomId + ":" + eventType.name();
+        long now = System.currentTimeMillis();
+        
+        EventRateTracker tracker = eventRateLimiters.compute(key, (k, existing) -> {
+            if (existing == null) {
+                return new EventRateTracker(now);
+            }
+            existing.recordEvent(now);
+            return existing;
+        });
+        
+        boolean limited = tracker.isRateLimited(now);
+        if (limited && tracker.shouldBan(now)) {
+            // First time hitting limit in this suppression window - ban the room
+            banRoom(roomId, room);
+        }
+        return limited;
+    }
+    
+    /**
+     * Tracks event rate for a specific room + event type combination.
+     */
+    private static final class EventRateTracker {
+        private long windowStart;
+        private int eventCount;
+        private boolean banned;
+        
+        EventRateTracker(long now) {
+            this.windowStart = now;
+            this.eventCount = 1;
+            this.banned = false;
+        }
+        
+        synchronized void recordEvent(long now) {
+            // Reset window if expired
+            if (now - windowStart > RATE_LIMIT_WINDOW_MS) {
+                windowStart = now;
+                eventCount = 1;
+                // Don't reset banned here - room ban is checked separately
+            } else {
+                eventCount++;
+            }
+        }
+        
+        synchronized boolean isRateLimited(long now) {
+            return eventCount > MAX_EVENTS_PER_WINDOW;
+        }
+        
+        /**
+         * Check if this is the first time we've hit the limit (to trigger ban).
+         * Returns true only once per suppression window.
+         */
+        synchronized boolean shouldBan(long now) {
+            if (eventCount > MAX_EVENTS_PER_WINDOW && !banned) {
+                banned = true;
+                return true;
+            }
+            return false;
+        }
     }
 }

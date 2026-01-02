@@ -921,6 +921,15 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
           if (this.roomSpecialTypes != null) {
             this.roomSpecialTypes.dispose();
           }
+          
+          // Clear wired engine caches for this room
+          if (com.eu.habbo.habbohotel.wired.core.WiredManager.getStackIndex() != null) {
+            com.eu.habbo.habbohotel.wired.core.WiredManager.getStackIndex().invalidateAll(this);
+          }
+          if (com.eu.habbo.habbohotel.wired.core.WiredManager.getEngine() != null) {
+            com.eu.habbo.habbohotel.wired.core.WiredManager.getEngine().clearRoomRecursionDepth(this.id);
+            com.eu.habbo.habbohotel.wired.core.WiredManager.getEngine().clearRoomRateLimiters(this.id);
+          }
 
           this.itemManager.clear();
 

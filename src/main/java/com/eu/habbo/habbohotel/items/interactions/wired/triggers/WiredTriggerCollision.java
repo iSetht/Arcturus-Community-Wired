@@ -27,7 +27,9 @@ public class WiredTriggerCollision extends InteractionWiredTrigger {
 
     @Override
     public boolean matches(HabboItem triggerItem, WiredEvent event) {
-        return event.getSourceItem().isPresent();
+        // Collision trigger fires when a furniture item moves and collides with a room unit
+        // The actor is the room unit that was collided with
+        return event.getActor().isPresent();
     }
 
     @Deprecated
