@@ -37,7 +37,9 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements ICy
 
     @Override
     public boolean matches(HabboItem triggerItem, WiredEvent event) {
-        return true;
+        // Only match if this repeater is the one that actually fired
+        // The event's sourceItem contains the timer that triggered
+        return event.getSourceItem().map(item -> item.getId() == this.getId()).orElse(false);
     }
 
     @Deprecated

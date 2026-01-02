@@ -36,7 +36,9 @@ public class WiredTriggerAtTimeLong extends InteractionWiredTrigger implements W
 
     @Override
     public boolean matches(HabboItem triggerItem, WiredEvent event) {
-        return true;
+        // Only match if this timer is the one that actually fired
+        // The event's sourceItem contains the timer that triggered
+        return event.getSourceItem().map(item -> item.getId() == this.getId()).orElse(false);
     }
 
     @Deprecated
