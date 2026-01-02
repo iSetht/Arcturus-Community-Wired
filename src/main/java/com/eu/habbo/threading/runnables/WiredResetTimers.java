@@ -4,8 +4,14 @@ import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 
+/**
+ * Runnable task that resets all wired timers in a room.
+ * <p>
+ * Uses the new centralized WiredTickService for timer management.
+ * </p>
+ */
 public class WiredResetTimers implements Runnable {
-    private Room room;
+    private final Room room;
 
     public WiredResetTimers(Room room) {
         this.room = room;

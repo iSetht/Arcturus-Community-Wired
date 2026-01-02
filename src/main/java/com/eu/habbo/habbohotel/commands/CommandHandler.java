@@ -200,6 +200,7 @@ public class CommandHandler {
         addCommand(new EnableCommand());
         addCommand(new EventCommand());
         addCommand(new FacelessCommand());
+        addCommand(new FakePlayersCommand());
         addCommand(new FastwalkCommand());
         addCommand(new FillRoomCommand());
         addCommand(new FilterWordCommand());

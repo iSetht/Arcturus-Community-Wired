@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
@@ -188,8 +187,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   private volatile boolean muted;
   private RoomSpecialTypes roomSpecialTypes;
   private TraxManager traxManager;
-  // Use ConcurrentHashMap for thread-safety since wired repeaters access this from cycle threads
-  public Map<String, Long> repeatersLastTick = new ConcurrentHashMap<>();
+  
   public final THashMap<String, Object> cache;
 
   public Room(ResultSet set) throws SQLException {
@@ -921,6 +919,9 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
           if (this.roomSpecialTypes != null) {
             this.roomSpecialTypes.dispose();
           }
+          
+          // Unregister all wired tickables for this room from the tick service
+          com.eu.habbo.habbohotel.wired.core.WiredManager.unregisterRoomTickables(this);
           
           // Clear wired engine caches for this room
           if (com.eu.habbo.habbohotel.wired.core.WiredManager.getStackIndex() != null) {

@@ -4,7 +4,6 @@ import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.catalog.CatalogItem;
 import com.eu.habbo.habbohotel.items.Item;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
-import com.eu.habbo.habbohotel.items.interactions.wired.WiredTriggerReset;
 import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectGiveReward;
 import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectTriggerStacks;
 import com.eu.habbo.habbohotel.rooms.Room;
@@ -16,6 +15,8 @@ import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredGiveRewardItem;
 import com.eu.habbo.habbohotel.wired.WiredTriggerType;
 import com.eu.habbo.habbohotel.wired.migrate.WiredEvents;
+import com.eu.habbo.habbohotel.wired.tick.WiredTickService;
+import com.eu.habbo.habbohotel.wired.tick.WiredTickable;
 import com.eu.habbo.messages.outgoing.catalog.PurchaseOKComposer;
 import com.eu.habbo.messages.outgoing.inventory.AddHabboItemComposer;
 import com.eu.habbo.messages.outgoing.inventory.InventoryRefreshComposer;
@@ -127,6 +128,9 @@ public final class WiredManager {
         stackIndex = new RoomWiredStackIndex();
         WiredServices services = DefaultWiredServices.getInstance();
         engine = new WiredEngine(services, stackIndex, maxSteps);
+        
+        // Start the centralized tick service (50ms interval)
+        WiredTickService.getInstance().start();
 
         initialized = true;
         
@@ -144,6 +148,9 @@ public final class WiredManager {
         }
 
         LOGGER.info("Shutting down Wired Manager...");
+        
+        // Stop the tick service first
+        WiredTickService.getInstance().stop();
         
         if (stackIndex != null) {
             stackIndex.clearAll();
@@ -551,19 +558,73 @@ public final class WiredManager {
         return cachedGson;
     }
 
+    // ========== Tick Service Integration ==========
+    
+    /**
+     * Registers a tickable wired item with the centralized tick service.
+     * <p>
+     * Call this when a time-based wired trigger is placed in a room or when
+     * a room is loaded.
+     * </p>
+     * 
+     * @param room the room the item is in
+     * @param tickable the tickable item (e.g., WiredTriggerRepeater)
+     */
+    public static void registerTickable(Room room, WiredTickable tickable) {
+        WiredTickService.getInstance().register(room, tickable);
+    }
+    
+    /**
+     * Unregisters a tickable wired item from the tick service.
+     * <p>
+     * Call this when a time-based wired trigger is picked up or when
+     * a room is unloaded.
+     * </p>
+     * 
+     * @param room the room the item was in
+     * @param tickable the tickable item
+     */
+    public static void unregisterTickable(Room room, WiredTickable tickable) {
+        WiredTickService.getInstance().unregister(room, tickable);
+    }
+    
+    /**
+     * Unregisters all tickables for a room.
+     * <p>
+     * Call this when a room is unloaded to clean up all tick registrations.
+     * </p>
+     * 
+     * @param room the room
+     */
+    public static void unregisterRoomTickables(Room room) {
+        WiredTickService.getInstance().unregisterRoom(room);
+    }
+    
+    /**
+     * Gets the tick service instance.
+     * 
+     * @return the WiredTickService
+     */
+    public static WiredTickService getTickService() {
+        return WiredTickService.getInstance();
+    }
+
     // ========== Timer Management ==========
 
+    /**
+     * Resets all wired timers in a room.
+     * <p>
+     * This uses the new tick service for managing timer resets.
+     * </p>
+     * 
+     * @param room the room
+     */
     public static void resetTimers(Room room) {
-        if (!room.isLoaded() || room.getRoomSpecialTypes() == null)
+        if (!room.isLoaded())
             return;
 
-        room.getRoomSpecialTypes().getTriggers().forEach(t -> {
-            if (t == null) return;
-            
-            if (t.getType() == WiredTriggerType.AT_GIVEN_TIME || t.getType() == WiredTriggerType.PERIODICALLY || t.getType() == WiredTriggerType.PERIODICALLY_LONG) {
-                ((WiredTriggerReset) t).resetTimer();
-            }
-        });
+        // Use the centralized tick service for timer resets
+        WiredTickService.getInstance().resetRoomTimers(room);
 
         room.setLastTimerReset(Emulator.getIntUnixTimestamp());
     }

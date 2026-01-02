@@ -23,6 +23,7 @@ import com.eu.habbo.habbohotel.users.HabboInfo;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.users.HabboManager;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.tick.WiredTickable;
 import com.eu.habbo.messages.outgoing.inventory.AddHabboItemComposer;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemUpdateComposer;
 import com.eu.habbo.messages.outgoing.rooms.items.ItemStateComposer;
@@ -620,7 +621,13 @@ public class RoomItemManager {
         boolean isWiredItem = false;
 
         synchronized (specialTypes) {
-            if (item instanceof ICycleable) {
+            // Register with tick service for time-based wired triggers (new 50ms tick system)
+            // This replaces ICycleable for wired items
+            if (item instanceof WiredTickable) {
+                WiredManager.registerTickable(this.room, (WiredTickable) item);
+            }
+            // Still register non-wired ICycleable items with the old system
+            else if (item instanceof ICycleable) {
                 specialTypes.addCycleTask((ICycleable) item);
             }
 
@@ -734,7 +741,12 @@ public class RoomItemManager {
         
         boolean isWiredItem = false;
 
-        if (item instanceof ICycleable) {
+        // Unregister from tick service for time-based wired triggers (new 50ms tick system)
+        if (item instanceof WiredTickable) {
+            WiredManager.unregisterTickable(this.room, (WiredTickable) item);
+        }
+        // Still handle non-wired ICycleable items with the old system
+        else if (item instanceof ICycleable) {
             specialTypes.removeCycleTask((ICycleable) item);
         }
 
