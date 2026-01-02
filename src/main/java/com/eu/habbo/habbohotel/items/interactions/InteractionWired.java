@@ -33,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </p>
  * <p>
  * Wired items at the same tile coordinates form a "stack" and execute together.
- * The {@link com.eu.habbo.habbohotel.wired.WiredHandler} orchestrates execution.
+ * The {@link com.eu.habbo.habbohotel.wired.core.WiredManager} orchestrates execution.
  * </p>
  * <p>
  * Key features:
@@ -44,7 +44,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  * </p>
  * 
- * @see com.eu.habbo.habbohotel.wired.WiredHandler
+ * @see com.eu.habbo.habbohotel.wired.core.WiredManager
  * @see com.eu.habbo.habbohotel.rooms.RoomSpecialTypes
  */
 public abstract class InteractionWired extends InteractionDefault {

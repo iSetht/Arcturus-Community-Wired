@@ -8,6 +8,8 @@ import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
+import com.eu.habbo.habbohotel.wired.api.IWiredEffect;
+import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.wired.WiredEffectDataComposer;
 
@@ -37,9 +39,9 @@ import java.util.function.Predicate;
  * 
  * @see InteractionWiredTrigger
  * @see InteractionWiredCondition
- * @see com.eu.habbo.habbohotel.wired.WiredHandler
+ * @see com.eu.habbo.habbohotel.wired.core.WiredManager
  */
-public abstract class InteractionWiredEffect extends InteractionWired {
+public abstract class InteractionWiredEffect extends InteractionWired implements IWiredEffect {
     
     // Common cooldown constants (in milliseconds)
     /** No cooldown - effect can trigger as fast as possible */
@@ -94,6 +96,25 @@ public abstract class InteractionWiredEffect extends InteractionWired {
     }
 
     public abstract WiredEffectType getType();
+
+    // ========== IWiredEffect Implementation ==========
+    
+    /**
+     * Executes this effect with the given context.
+     * Subclasses must implement this to define their effect logic.
+     * 
+     * @param ctx the wired context containing event data
+     */
+    @Override
+    public abstract void execute(WiredContext ctx);
+    
+    /**
+     * Returns whether this effect requires an actor (user) to execute.
+     */
+    @Override
+    public boolean requiresActor() {
+        return requiresTriggeringUser();
+    }
 
     /**
      * Indicates whether this effect requires a triggering user (RoomUnit) to execute.

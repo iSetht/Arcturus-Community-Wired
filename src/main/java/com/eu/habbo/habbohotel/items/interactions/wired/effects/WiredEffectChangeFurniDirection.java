@@ -8,6 +8,8 @@ import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
 import com.eu.habbo.habbohotel.rooms.*;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.*;
+import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
@@ -44,8 +46,9 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
     }
 
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
-        if (room == null || room.getLayout() == null) return false;
+    public void execute(WiredContext ctx) {
+        Room room = ctx.room();
+        if (room == null || room.getLayout() == null) return;
         
         THashSet<HabboItem> items = new THashSet<>();
 
@@ -58,7 +61,7 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
             this.items.remove(item);
         }
 
-        if (this.items.isEmpty()) return false;
+        if (this.items.isEmpty()) return;
 
         for (Map.Entry<HabboItem, WiredChangeDirectionSetting> entry : this.items.entrySet()) {
             HabboItem item = entry.getKey();
@@ -108,7 +111,9 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
                 for (RoomUnit _roomUnit : room.getRoomUnits(tile)) {
                     hasRoomUnits = true;
                     if(_roomUnit.getCurrentLocation() == targetTile) {
-                        Emulator.getThreading().run(() -> WiredHandler.handle(WiredTriggerType.COLLISION, _roomUnit, room, new Object[]{entry.getKey()}));
+                        Emulator.getThreading().run(() -> {
+                            WiredManager.triggerBotCollision(room, _roomUnit);
+                        });
                         break;
                     }
                 }
@@ -124,14 +129,18 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
                 }
             }
         }
+    }
 
+    @Deprecated
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
         return false;
     }
 
     @Override
     public String getWiredData() {
         ArrayList<WiredChangeDirectionSetting> settings = new ArrayList<>(this.items.values());
-        return WiredHandler.getGson().toJson(new JsonData(this.startRotation, this.blockedAction, settings, this.getDelay()));
+        return WiredManager.getGson().toJson(new JsonData(this.startRotation, this.blockedAction, settings, this.getDelay()));
     }
 
     @Override
@@ -142,7 +151,7 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if(wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
             this.startRotation = data.start_direction;
             this.blockedAction = data.blocked_action;
@@ -206,7 +215,7 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
     @Override
     public void serializeWiredData(ServerMessage message, Room room) {
         message.appendBoolean(false);
-        message.appendInt(WiredHandler.MAXIMUM_FURNI_SELECTION);
+        message.appendInt(WiredManager.MAXIMUM_FURNI_SELECTION);
         message.appendInt(this.items.size());
         for (Map.Entry<HabboItem, WiredChangeDirectionSetting> item : this.items.entrySet()) {
             message.appendInt(item.getKey().getId());

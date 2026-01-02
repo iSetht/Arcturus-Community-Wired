@@ -9,8 +9,7 @@ import com.eu.habbo.habbohotel.pets.Pet;
 import com.eu.habbo.habbohotel.users.DanceType;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
-import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.outgoing.rooms.RoomAccessDeniedComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUnitIdleComposer;
@@ -243,8 +242,7 @@ public class RoomCycleManager {
                     }
                     if (danceIsNone && !Emulator.getConfig()
                             .getBoolean("hotel.roomuser.idle.not_dancing.ignore.wired_idle")) {
-                        WiredHandler.handle(WiredTriggerType.IDLES, habbo.getRoomUnit(), this.room,
-                                new Object[]{habbo});
+                        WiredManager.triggerUserIdles(this.room, habbo.getRoomUnit());
                     }
                 }
             } else {

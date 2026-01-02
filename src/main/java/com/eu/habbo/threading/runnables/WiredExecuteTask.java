@@ -5,7 +5,7 @@ import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
 import com.eu.habbo.habbohotel.items.interactions.wired.triggers.WiredTriggerAtSetTime;
 import com.eu.habbo.habbohotel.items.interactions.wired.triggers.WiredTriggerAtTimeLong;
 import com.eu.habbo.habbohotel.rooms.Room;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 
 public class WiredExecuteTask implements Runnable {
     private final InteractionWiredTrigger task;
@@ -38,7 +38,7 @@ public class WiredExecuteTask implements Runnable {
                         return;
                 }
                 try {
-                    WiredHandler.handle(this.task, null, this.room, null);
+                    WiredManager.triggerTimerTick(this.room, this.task);
                 } catch (Exception e) {
                     // Prevent task from crashing the thread pool
                 }

@@ -7,8 +7,9 @@ import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.HabboItem;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.core.WiredEvent;
 import com.eu.habbo.messages.ServerMessage;
 import gnu.trove.set.hash.THashSet;
 
@@ -33,12 +34,17 @@ public class WiredTriggerHabboWalkOnFurni extends InteractionWiredTrigger {
     }
 
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
-        if (stuff.length >= 1) {
-            if (stuff[0] instanceof HabboItem) {
-                return this.items.contains(stuff[0]);
-            }
+    public boolean matches(HabboItem triggerItem, WiredEvent event) {
+        HabboItem sourceItem = event.getSourceItem().orElse(null);
+        if (sourceItem != null) {
+            return this.items.contains(sourceItem);
         }
+        return false;
+    }
+
+    @Deprecated
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
         return false;
     }
 
@@ -65,7 +71,7 @@ public class WiredTriggerHabboWalkOnFurni extends InteractionWiredTrigger {
         }
 
         message.appendBoolean(false);
-        message.appendInt(WiredHandler.MAXIMUM_FURNI_SELECTION);
+        message.appendInt(WiredManager.MAXIMUM_FURNI_SELECTION);
         message.appendInt(this.items.size());
         for (HabboItem item : this.items) {
             message.appendInt(item.getId());
@@ -98,7 +104,7 @@ public class WiredTriggerHabboWalkOnFurni extends InteractionWiredTrigger {
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGson().toJson(new JsonData(
+        return WiredManager.getGson().toJson(new JsonData(
             this.items.stream().map(HabboItem::getId).collect(Collectors.toList())
         ));
     }
@@ -109,7 +115,7 @@ public class WiredTriggerHabboWalkOnFurni extends InteractionWiredTrigger {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
             for (Integer id: data.itemIds) {
                 HabboItem item = room.getHabboItem(id);
                 if (item != null) {

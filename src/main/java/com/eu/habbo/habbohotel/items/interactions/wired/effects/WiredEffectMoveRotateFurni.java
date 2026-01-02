@@ -9,7 +9,8 @@ import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
 import com.eu.habbo.habbohotel.rooms.*;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
@@ -25,7 +26,7 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
 
     public static final WiredEffectType type = WiredEffectType.MOVE_ROTATE;
     // Use LinkedHashSet to preserve insertion order for consistent movement
-    private final Set<HabboItem> items = new LinkedHashSet<>(WiredHandler.MAXIMUM_FURNI_SELECTION / 2);
+    private final Set<HabboItem> items = new LinkedHashSet<>(WiredManager.MAXIMUM_FURNI_SELECTION / 2);
     private int direction;
     private int rotation;
     // Use thread-safe set for cooldowns since execute() can be called from async threads
@@ -40,7 +41,8 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
     }
 
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+    public void execute(WiredContext ctx) {
+        Room room = ctx.room();
         // remove items that are no longer in the room
         this.items.removeIf(item -> Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null);
 
@@ -73,8 +75,12 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
                 }
             }
         }
+    }
 
-        return true;
+    @Deprecated
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        return false;
     }
 
     @Override
@@ -92,7 +98,7 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
             this.items.remove(item);
         }
 
-        return WiredHandler.getGson().toJson(new JsonData(
+        return WiredManager.getGson().toJson(new JsonData(
                 this.direction,
                 this.rotation,
                 this.getDelay(),
@@ -106,7 +112,7 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
             this.direction = data.direction;
             this.rotation = data.rotation;
@@ -165,7 +171,7 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
         }
 
         message.appendBoolean(false);
-        message.appendInt(WiredHandler.MAXIMUM_FURNI_SELECTION);
+        message.appendInt(WiredManager.MAXIMUM_FURNI_SELECTION);
         message.appendInt(this.items.size());
         for (HabboItem item : this.items)
             message.appendInt(item.getId());

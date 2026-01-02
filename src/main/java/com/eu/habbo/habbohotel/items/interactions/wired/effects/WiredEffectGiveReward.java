@@ -13,7 +13,8 @@ import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.WiredGiveRewardItem;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.generic.alerts.UpdateFailedComposer;
@@ -49,17 +50,29 @@ public class WiredEffectGiveReward extends InteractionWiredEffect {
     }
 
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+    public void execute(WiredContext ctx) {
+        Room room = ctx.room();
+        RoomUnit roomUnit = ctx.actor().orElse(null);
+        if (roomUnit == null) return;
+
         Habbo habbo = room.getHabbo(roomUnit);
 
-        return habbo != null && WiredHandler.getReward(habbo, this);
+        if (habbo != null) {
+            WiredManager.getReward(habbo, this);
+        }
+    }
+
+    @Deprecated
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        return false;
     }
 
     @Override
     public String getWiredData() {
 
         ArrayList<WiredGiveRewardItem> rewards = new ArrayList<>(this.rewardItems);
-        return WiredHandler.getGson().toJson(new JsonData(this.limit, this.given, this.rewardTime, this.uniqueRewards, this.limitationInterval, rewards, this.getDelay()));
+        return WiredManager.getGson().toJson(new JsonData(this.limit, this.given, this.rewardTime, this.uniqueRewards, this.limitationInterval, rewards, this.getDelay()));
     }
 
     @Override
@@ -67,7 +80,7 @@ public class WiredEffectGiveReward extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if(wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
             this.limit = data.limit;
             this.given = data.given;
@@ -207,7 +220,7 @@ public class WiredEffectGiveReward extends InteractionWiredEffect {
 
             this.setDelay(settings.getDelay());
 
-            WiredHandler.dropRewards(this.getId());
+            WiredManager.dropRewards(this.getId());
             return true;
         }
 

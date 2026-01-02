@@ -22,6 +22,7 @@ import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboInfo;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.users.HabboManager;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.outgoing.inventory.AddHabboItemComposer;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemUpdateComposer;
 import com.eu.habbo.messages.outgoing.rooms.items.ItemStateComposer;
@@ -615,6 +616,8 @@ public class RoomItemManager {
         if (specialTypes == null) {
             return;
         }
+        
+        boolean isWiredItem = false;
 
         synchronized (specialTypes) {
             if (item instanceof ICycleable) {
@@ -623,12 +626,16 @@ public class RoomItemManager {
 
             if (item instanceof InteractionWiredTrigger) {
                 specialTypes.addTrigger((InteractionWiredTrigger) item);
+                isWiredItem = true;
             } else if (item instanceof InteractionWiredEffect) {
                 specialTypes.addEffect((InteractionWiredEffect) item);
+                isWiredItem = true;
             } else if (item instanceof InteractionWiredCondition) {
                 specialTypes.addCondition((InteractionWiredCondition) item);
+                isWiredItem = true;
             } else if (item instanceof InteractionWiredExtra) {
                 specialTypes.addExtra((InteractionWiredExtra) item);
+                isWiredItem = true;
             } else if (item instanceof InteractionBattleBanzaiTeleporter) {
                 specialTypes.addBanzaiTeleporter((InteractionBattleBanzaiTeleporter) item);
             } else if (item instanceof InteractionRoller) {
@@ -669,6 +676,11 @@ public class RoomItemManager {
                        item instanceof InteractionFireworks) {
                 specialTypes.addUndefined(item);
             }
+        }
+        
+        // Invalidate wired cache when wired items are added
+        if (isWiredItem) {
+            WiredManager.invalidateRoom(this.room);
         }
     }
 
@@ -719,6 +731,8 @@ public class RoomItemManager {
         if (specialTypes == null) {
             return;
         }
+        
+        boolean isWiredItem = false;
 
         if (item instanceof ICycleable) {
             specialTypes.removeCycleTask((ICycleable) item);
@@ -728,12 +742,16 @@ public class RoomItemManager {
             specialTypes.removeBanzaiTeleporter((InteractionBattleBanzaiTeleporter) item);
         } else if (item instanceof InteractionWiredTrigger) {
             specialTypes.removeTrigger((InteractionWiredTrigger) item);
+            isWiredItem = true;
         } else if (item instanceof InteractionWiredEffect) {
             specialTypes.removeEffect((InteractionWiredEffect) item);
+            isWiredItem = true;
         } else if (item instanceof InteractionWiredCondition) {
             specialTypes.removeCondition((InteractionWiredCondition) item);
+            isWiredItem = true;
         } else if (item instanceof InteractionWiredExtra) {
             specialTypes.removeExtra((InteractionWiredExtra) item);
+            isWiredItem = true;
         } else if (item instanceof InteractionRoller) {
             specialTypes.removeRoller((InteractionRoller) item);
         } else if (item instanceof InteractionGameScoreboard) {
@@ -769,6 +787,11 @@ public class RoomItemManager {
                    item instanceof InteractionTent ||
                    item instanceof InteractionSnowboardSlope) {
             specialTypes.removeUndefined(item);
+        }
+        
+        // Invalidate wired cache when wired items are removed
+        if (isWiredItem) {
+            WiredManager.invalidateRoom(this.room);
         }
     }
 
@@ -1500,6 +1523,21 @@ public class RoomItemManager {
         }
         if (item.getZ() > Room.MAXIMUM_FURNI_HEIGHT) {
             item.setZ(Room.MAXIMUM_FURNI_HEIGHT);
+        }
+        
+        // Update wired spatial index and invalidate cache when wired items are moved
+        if (item instanceof InteractionWiredTrigger) {
+            this.room.getRoomSpecialTypes().updateTriggerLocation((InteractionWiredTrigger) item, oldLocation.x, oldLocation.y);
+            WiredManager.invalidateRoom(this.room);
+        } else if (item instanceof InteractionWiredEffect) {
+            this.room.getRoomSpecialTypes().updateEffectLocation((InteractionWiredEffect) item, oldLocation.x, oldLocation.y);
+            WiredManager.invalidateRoom(this.room);
+        } else if (item instanceof InteractionWiredCondition) {
+            this.room.getRoomSpecialTypes().updateConditionLocation((InteractionWiredCondition) item, oldLocation.x, oldLocation.y);
+            WiredManager.invalidateRoom(this.room);
+        } else if (item instanceof InteractionWiredExtra) {
+            this.room.getRoomSpecialTypes().updateExtraLocation((InteractionWiredExtra) item, oldLocation.x, oldLocation.y);
+            WiredManager.invalidateRoom(this.room);
         }
 
         // Update Furniture

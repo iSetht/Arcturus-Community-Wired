@@ -9,8 +9,10 @@ import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredTriggerReset;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
+import com.eu.habbo.habbohotel.users.HabboItem;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.core.WiredEvent;
 import com.eu.habbo.messages.ServerMessage;
 import gnu.trove.procedure.TObjectProcedure;
 
@@ -34,13 +36,19 @@ public class WiredTriggerRepeaterLong extends InteractionWiredTrigger implements
     }
 
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+    public boolean matches(HabboItem triggerItem, WiredEvent event) {
         return true;
+    }
+
+    @Deprecated
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        return false;
     }
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGson().toJson(new JsonData(
+        return WiredManager.getGson().toJson(new JsonData(
             this.repeatTime
         ));
     }
@@ -50,7 +58,7 @@ public class WiredTriggerRepeaterLong extends InteractionWiredTrigger implements
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
             this.repeatTime = data.repeatTime;
         } else {
             if (wiredData.length() >= 1) {
@@ -136,7 +144,7 @@ public class WiredTriggerRepeaterLong extends InteractionWiredTrigger implements
             if (this.getRoomId() != 0) {
                 if (room.isLoaded()) {
                     room.repeatersLastTick.put(Key, cycleTimestamp);
-                    WiredHandler.handle(this, null, room, new Object[]{this});
+                    WiredManager.triggerTimerRepeat(room, this);
                 }
             }
         }
@@ -148,7 +156,7 @@ public class WiredTriggerRepeaterLong extends InteractionWiredTrigger implements
         if (this.getRoomId() != 0) {
             Room room = Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId());
             if (room != null && room.isLoaded()) {
-                WiredHandler.handle(this, null, room, new Object[]{this});
+                WiredManager.triggerTimerRepeat(room, this);
             }
         }
     }

@@ -4,8 +4,7 @@ import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.rooms.*;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboGender;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
-import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.outgoing.rooms.users.*;
 import com.eu.habbo.plugin.events.bots.BotChatEvent;
 import com.eu.habbo.plugin.events.bots.BotShoutEvent;
@@ -190,7 +189,7 @@ public class Bot implements Runnable {
                     }
                 }/* else {
                     for (RoomTile t : this.room.getLayout().getTilesAround(this.room.getLayout().getTile(this.getRoomUnit().getX(), this.getRoomUnit().getY()))) {
-                        WiredHandler.handle(WiredTriggerType.BOT_REACHED_STF, this.roomUnit, this.room, this.room.getItemsAt(t).toArray());
+                        WiredManager.handle(WiredTriggerType.BOT_REACHED_STF, this.roomUnit, this.room, this.room.getItemsAt(t).toArray());
                     }
                 }*/
             }
@@ -208,7 +207,7 @@ public class Bot implements Runnable {
                             .replace(Emulator.getTexts().getValue("wired.variable.roomname", "%roomname%"), this.room.getName())
                             .replace(Emulator.getTexts().getValue("wired.variable.user_count", "%user_count%"), this.room.getUserCount() + "");
 
-                    if(!WiredHandler.handle(WiredTriggerType.SAY_SOMETHING, this.getRoomUnit(), room, new Object[]{ message })) {
+                    if(!WiredManager.triggerUserSays(room, this.getRoomUnit(), message)) {
                         this.talk(message);
                     }
 
@@ -276,7 +275,7 @@ public class Bot implements Runnable {
 
         if(PLACEMENT_MESSAGES.length > 0) {
             String message = PLACEMENT_MESSAGES[Emulator.getRandom().nextInt(PLACEMENT_MESSAGES.length)];
-            if (!WiredHandler.handle(WiredTriggerType.SAY_SOMETHING, this.getRoomUnit(), room, new Object[]{message})) {
+            if (!WiredManager.triggerUserSays(room, this.getRoomUnit(), message)) {
                 this.talk(message);
             }
         }

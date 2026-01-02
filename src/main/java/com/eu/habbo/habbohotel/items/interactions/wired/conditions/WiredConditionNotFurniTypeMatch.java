@@ -8,7 +8,8 @@ import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredConditionType;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.messages.ServerMessage;
 import gnu.trove.set.hash.THashSet;
 
@@ -31,28 +32,30 @@ public class WiredConditionNotFurniTypeMatch extends InteractionWiredCondition {
     }
 
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+    public boolean evaluate(WiredContext ctx) {
         this.refresh();
 
         if(items.isEmpty())
             return true;
 
-        if (stuff != null) {
-            if (stuff.length >= 1) {
-                if (stuff[0] instanceof HabboItem) {
-                    HabboItem triggeringItem = (HabboItem)stuff[0];
-                    return this.items.stream().noneMatch(item -> item == triggeringItem);
-                }
-            }
+        HabboItem triggeringItem = ctx.sourceItem().orElse(null);
+        if (triggeringItem != null) {
+            return this.items.stream().noneMatch(item -> item == triggeringItem);
         }
 
         return true;
     }
 
+    @Deprecated
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        return false;
+    }
+
     @Override
     public String getWiredData() {
         this.refresh();
-        return WiredHandler.getGson().toJson(new JsonData(
+        return WiredManager.getGson().toJson(new JsonData(
                 this.items.stream().map(HabboItem::getId).collect(Collectors.toList())
         ));
     }
@@ -63,7 +66,7 @@ public class WiredConditionNotFurniTypeMatch extends InteractionWiredCondition {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            WiredConditionFurniTypeMatch.JsonData data = WiredHandler.getGson().fromJson(wiredData, WiredConditionFurniTypeMatch.JsonData.class);
+            WiredConditionFurniTypeMatch.JsonData data = WiredManager.getGson().fromJson(wiredData, WiredConditionFurniTypeMatch.JsonData.class);
 
             for(int id : data.itemIds) {
                 HabboItem item = room.getHabboItem(id);
@@ -100,7 +103,7 @@ public class WiredConditionNotFurniTypeMatch extends InteractionWiredCondition {
         this.refresh();
 
         message.appendBoolean(false);
-        message.appendInt(WiredHandler.MAXIMUM_FURNI_SELECTION);
+        message.appendInt(WiredManager.MAXIMUM_FURNI_SELECTION);
         message.appendInt(this.items.size());
 
         for (HabboItem item : this.items)

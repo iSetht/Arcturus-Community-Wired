@@ -12,7 +12,8 @@ import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredConditionType;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.messages.ServerMessage;
 import gnu.trove.set.hash.THashSet;
 
@@ -42,7 +43,9 @@ public class WiredConditionFurniHaveHabbo extends InteractionWiredCondition {
     }
 
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+    public boolean evaluate(WiredContext ctx) {
+        Room room = ctx.room();
+
         this.refresh();
 
         if (this.items.isEmpty())
@@ -66,10 +69,16 @@ public class WiredConditionFurniHaveHabbo extends InteractionWiredCondition {
         });
     }
 
+    @Deprecated
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        return false;
+    }
+
     @Override
     public String getWiredData() {
         this.refresh();
-        return WiredHandler.getGson().toJson(new JsonData(
+        return WiredManager.getGson().toJson(new JsonData(
                 this.items.stream().map(HabboItem::getId).collect(Collectors.toList())
         ));
     }
@@ -80,7 +89,7 @@ public class WiredConditionFurniHaveHabbo extends InteractionWiredCondition {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGson().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
 
             for(int id : data.itemIds) {
                 HabboItem item = room.getHabboItem(id);
@@ -116,7 +125,7 @@ public class WiredConditionFurniHaveHabbo extends InteractionWiredCondition {
         this.refresh();
 
         message.appendBoolean(false);
-        message.appendInt(WiredHandler.MAXIMUM_FURNI_SELECTION);
+        message.appendInt(WiredManager.MAXIMUM_FURNI_SELECTION);
         message.appendInt(this.items.size());
 
         for (HabboItem item : this.items)

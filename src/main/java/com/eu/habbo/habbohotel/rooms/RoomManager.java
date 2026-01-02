@@ -26,8 +26,7 @@ import com.eu.habbo.habbohotel.pets.PetTasks;
 import com.eu.habbo.habbohotel.polls.Poll;
 import com.eu.habbo.habbohotel.polls.PollManager;
 import com.eu.habbo.habbohotel.users.*;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
-import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.incoming.users.UserNuxEvent;
 import com.eu.habbo.messages.outgoing.generic.alerts.GenericErrorMessagesComposer;
 import com.eu.habbo.messages.outgoing.hotelview.HotelViewComposer;
@@ -926,7 +925,7 @@ public class RoomManager {
             }
         }
 
-        WiredHandler.handle(WiredTriggerType.ENTER_ROOM, habbo.getRoomUnit(), room, null);
+        WiredManager.triggerUserEntersRoom(room, habbo.getRoomUnit());
         room.habboEntered(habbo);
 
         if (!habbo.getHabboStats().nux && (room.isOwner(habbo) || room.isPublicRoom())) {

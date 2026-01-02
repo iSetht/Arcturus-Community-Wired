@@ -2,7 +2,7 @@ package com.eu.habbo.threading.runnables;
 
 import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.rooms.Room;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 
 public class WiredResetTimers implements Runnable {
     private Room room;
@@ -16,7 +16,7 @@ public class WiredResetTimers implements Runnable {
         if (!Emulator.isShuttingDown && Emulator.isReady) {
             if (this.room != null && this.room.isLoaded()) {
                 try {
-                    WiredHandler.resetTimers(this.room);
+                    WiredManager.resetTimers(this.room);
                 } catch (Exception e) {
                     // Prevent task from crashing the thread pool
                 }

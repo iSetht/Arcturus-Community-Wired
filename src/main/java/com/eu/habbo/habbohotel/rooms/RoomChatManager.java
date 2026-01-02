@@ -8,8 +8,7 @@ import com.eu.habbo.habbohotel.items.interactions.InteractionTalkingFurniture;
 import com.eu.habbo.habbohotel.permissions.Permission;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
-import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserNameChangedComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserShoutComposer;
@@ -307,15 +306,13 @@ public class RoomChatManager {
         // Handle commands and wired
         if (chatType != RoomChatType.WHISPER) {
             if (CommandHandler.handleCommand(habbo.getClient(), roomChatMessage.getUnfilteredMessage())) {
-                WiredHandler.handle(WiredTriggerType.SAY_COMMAND, habbo.getRoomUnit(),
-                    habbo.getHabboInfo().getCurrentRoom(), new Object[]{roomChatMessage.getMessage()});
+                WiredManager.triggerUserSays(habbo.getHabboInfo().getCurrentRoom(), habbo.getRoomUnit(), roomChatMessage.getMessage());
                 roomChatMessage.isCommand = true;
                 return;
             }
 
             if (!ignoreWired) {
-                if (WiredHandler.handle(WiredTriggerType.SAY_SOMETHING, habbo.getRoomUnit(),
-                    habbo.getHabboInfo().getCurrentRoom(), new Object[]{roomChatMessage.getMessage()})) {
+                if (WiredManager.triggerUserSays(habbo.getHabboInfo().getCurrentRoom(), habbo.getRoomUnit(), roomChatMessage.getMessage())) {
                     habbo.getClient().sendResponse(new RoomUserWhisperComposer(
                         new RoomChatMessage(roomChatMessage.getMessage(), habbo, habbo,
                             roomChatMessage.getBubble())));

@@ -19,8 +19,7 @@ import com.eu.habbo.messages.outgoing.rooms.users.RoomUserEffectComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserHandItemComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserRemoveComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserStatusComposer;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
-import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import gnu.trove.TCollections;
 import gnu.trove.iterator.TIntObjectIterator;
 import gnu.trove.map.TIntObjectMap;
@@ -1174,7 +1173,7 @@ public class RoomUnitManager {
         }
 
         this.room.sendComposer(new RoomUnitIdleComposer(habbo.getRoomUnit()).compose());
-        WiredHandler.handle(WiredTriggerType.IDLES, habbo.getRoomUnit(), this.room, new Object[]{habbo});
+        WiredManager.triggerUserIdles(this.room, habbo.getRoomUnit());
     }
 
     /**
@@ -1186,7 +1185,7 @@ public class RoomUnitManager {
         }
         habbo.getRoomUnit().resetIdleTimer();
         this.room.sendComposer(new RoomUnitIdleComposer(habbo.getRoomUnit()).compose());
-        WiredHandler.handle(WiredTriggerType.UNIDLES, habbo.getRoomUnit(), this.room, new Object[]{habbo});
+        WiredManager.triggerUserUnidles(this.room, habbo.getRoomUnit());
     }
 
     /**
@@ -1206,9 +1205,9 @@ public class RoomUnitManager {
             this.room.sendComposer(new RoomUserDanceComposer(unit).compose());
 
             if (danceType.equals(DanceType.NONE) && isDancing) {
-                WiredHandler.handle(WiredTriggerType.STOPS_DANCING, unit, this.room, new Object[]{unit});
+                WiredManager.triggerUserStopsDancing(this.room, unit);
             } else if (!danceType.equals(DanceType.NONE) && !isDancing) {
-                WiredHandler.handle(WiredTriggerType.STARTS_DANCING, unit, this.room, new Object[]{unit});
+                WiredManager.triggerUserStartsDancing(this.room, unit);
             }
         }
     }
