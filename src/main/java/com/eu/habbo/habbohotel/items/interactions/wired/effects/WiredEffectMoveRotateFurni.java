@@ -11,6 +11,7 @@ import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.wired.core.WiredSimulation;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
@@ -31,6 +32,8 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
     private int rotation;
     // Use thread-safe set for cooldowns since execute() can be called from async threads
     private final Set<HabboItem> itemCooldowns = ConcurrentHashMap.newKeySet();
+    // Pre-selected directions from simulation (itemId -> direction)
+    private final Map<Integer, RoomUserRotation> preSelectedDirections = new ConcurrentHashMap<>();
 
     public WiredEffectMoveRotateFurni(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
@@ -56,7 +59,11 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
             double oldZ = item.getZ();
 
             if(this.direction > 0) {
-                RoomUserRotation moveDirection = this.getMovementDirection();
+                // Use pre-selected direction if available, otherwise pick random
+                RoomUserRotation moveDirection = this.preSelectedDirections.remove(item.getId());
+                if (moveDirection == null) {
+                    moveDirection = this.getMovementDirection();
+                }
                 newLocation = room.getLayout().getTile(
                     (short) (item.getX() + ((moveDirection == RoomUserRotation.WEST || moveDirection == RoomUserRotation.NORTH_WEST || moveDirection == RoomUserRotation.SOUTH_WEST) ? -1 : (((moveDirection == RoomUserRotation.EAST || moveDirection == RoomUserRotation.SOUTH_EAST || moveDirection == RoomUserRotation.NORTH_EAST) ? 1 : 0)))),
                     (short) (item.getY() + ((moveDirection == RoomUserRotation.NORTH || moveDirection == RoomUserRotation.NORTH_EAST || moveDirection == RoomUserRotation.NORTH_WEST) ? 1 : ((moveDirection == RoomUserRotation.SOUTH || moveDirection == RoomUserRotation.SOUTH_EAST || moveDirection == RoomUserRotation.SOUTH_WEST) ? -1 : 0)))
@@ -77,10 +84,47 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
         }
     }
 
-    @Deprecated
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
-        return false;
+    public boolean simulate(WiredContext ctx, WiredSimulation simulation) {
+        // Clear any previous pre-selected directions
+        this.preSelectedDirections.clear();
+        
+        for (HabboItem item : this.items) {
+            if (item == null) continue;
+            
+            WiredSimulation.SimulatedPosition currentPos = simulation.getItemPosition(item);
+            short newX = currentPos.x;
+            short newY = currentPos.y;
+            
+            if (this.direction > 0) {
+                // Pick the actual random direction now (same logic as getMovementDirection)
+                RoomUserRotation selectedDirection = this.getMovementDirection();
+                
+                // Calculate target position for the selected direction
+                short testX = (short) (currentPos.x + ((selectedDirection == RoomUserRotation.WEST || selectedDirection == RoomUserRotation.NORTH_WEST || selectedDirection == RoomUserRotation.SOUTH_WEST) ? -1 : 
+                    (((selectedDirection == RoomUserRotation.EAST || selectedDirection == RoomUserRotation.SOUTH_EAST || selectedDirection == RoomUserRotation.NORTH_EAST) ? 1 : 0))));
+                short testY = (short) (currentPos.y + ((selectedDirection == RoomUserRotation.NORTH || selectedDirection == RoomUserRotation.NORTH_EAST || selectedDirection == RoomUserRotation.NORTH_WEST) ? 1 : 
+                    ((selectedDirection == RoomUserRotation.SOUTH || selectedDirection == RoomUserRotation.SOUTH_EAST || selectedDirection == RoomUserRotation.SOUTH_WEST) ? -1 : 0)));
+                
+                // Validate this specific direction
+                if (!simulation.isTileValidForItem(testX, testY, item)) {
+                    return false; // This specific move would fail
+                }
+                
+                // Store the pre-selected direction for execution
+                this.preSelectedDirections.put(item.getId(), selectedDirection);
+                newX = testX;
+                newY = testY;
+            }
+            
+            if (newX != currentPos.x || newY != currentPos.y) {
+                if (!simulation.moveItem(item, newX, newY, currentPos.z, currentPos.rotation)) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
     }
 
     @Override
@@ -317,6 +361,12 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
     @Override
     public void cycle(Room room) {
         this.itemCooldowns.clear();
+        this.preSelectedDirections.clear();
+    }
+
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        return false;
     }
 
     static class JsonData {

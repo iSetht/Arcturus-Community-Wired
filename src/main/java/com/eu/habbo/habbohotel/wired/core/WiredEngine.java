@@ -207,9 +207,9 @@ public final class WiredEngine {
             return false;
         }
 
-        // Create execution context
+        // Create execution context with stack reference
         WiredState state = new WiredState(maxStepsPerStack);
-        WiredContext ctx = new WiredContext(event, stack.triggerItem(), services, state);
+        WiredContext ctx = new WiredContext(event, stack.triggerItem(), stack, services, state, null);
 
         // Initial step for trigger
         state.step();
@@ -397,7 +397,7 @@ public final class WiredEngine {
             }
         }
     }
-
+    
     /**
      * Schedule a delayed effect execution.
      */

@@ -12,6 +12,7 @@ import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.wired.core.WiredSimulation;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
@@ -139,6 +140,42 @@ public class WiredEffectMoveFurniTo extends InteractionWiredEffect {
     @Override
     public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
         return false;
+    }
+
+    @Override
+    public boolean simulate(WiredContext ctx, WiredSimulation simulation) {
+        Room room = ctx.room();
+        if (room == null || room.getLayout() == null) return true;
+        
+        Object[] stuff = ctx.legacySettings();
+        if (stuff == null || stuff.length == 0) return true;
+        
+        for (Object object : stuff) {
+            if (object instanceof HabboItem) {
+                HabboItem item = (HabboItem) object;
+                
+                if (this.items.isEmpty()) continue;
+                HabboItem targetItem = this.items.get(0);
+                if (targetItem == null) continue;
+                
+                WiredSimulation.SimulatedPosition targetPos = simulation.getItemPosition(targetItem);
+                RoomTile objectTile = room.getLayout().getTile(targetPos.x, targetPos.y);
+                if (objectTile == null) continue;
+                
+                RoomTile tile = room.getLayout().getTileInFront(objectTile, this.direction, 0);
+                if (tile == null) continue;
+                
+                WiredSimulation.SimulatedPosition currentPos = simulation.getItemPosition(item);
+                if (!simulation.isTileValidForItem(tile.x, tile.y, item)) {
+                    return false;
+                }
+                if (!simulation.moveItem(item, tile.x, tile.y, tile.getStackHeight(), currentPos.rotation)) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
     }
 
     @Override
