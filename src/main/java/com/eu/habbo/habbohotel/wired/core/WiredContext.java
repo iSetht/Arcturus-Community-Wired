@@ -4,6 +4,7 @@ import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.HabboItem;
+import com.eu.habbo.habbohotel.wired.api.WiredStack;
 
 import java.util.Optional;
 
@@ -52,6 +53,9 @@ public final class WiredContext {
     /** The wired trigger furniture item executing this stack */
     private final HabboItem triggerItem;
     
+    /** The wired stack being executed (for conditions to access effects) */
+    private final WiredStack stack;
+    
     /** Extra settings from the trigger item (for legacy compatibility) */
     private final Object[] legacySettings;
 
@@ -64,7 +68,7 @@ public final class WiredContext {
      * @param state the execution state for loop safety
      */
     public WiredContext(WiredEvent event, HabboItem triggerItem, WiredServices services, WiredState state) {
-        this(event, triggerItem, services, state, null);
+        this(event, triggerItem, null, services, state, null);
     }
 
     /**
@@ -77,12 +81,27 @@ public final class WiredContext {
      * @param legacySettings extra settings array for legacy adapter compatibility
      */
     public WiredContext(WiredEvent event, HabboItem triggerItem, WiredServices services, WiredState state, Object[] legacySettings) {
+        this(event, triggerItem, null, services, state, legacySettings);
+    }
+    
+    /**
+     * Create a new wired context with stack and legacy settings.
+     * 
+     * @param event the triggering event (required)
+     * @param triggerItem the wired trigger item (may be null)
+     * @param stack the wired stack being executed (may be null)
+     * @param services the services for performing side effects
+     * @param state the execution state
+     * @param legacySettings extra settings array for legacy adapter compatibility
+     */
+    public WiredContext(WiredEvent event, HabboItem triggerItem, WiredStack stack, WiredServices services, WiredState state, Object[] legacySettings) {
         if (event == null) throw new IllegalArgumentException("Event cannot be null");
         if (services == null) throw new IllegalArgumentException("Services cannot be null");
         if (state == null) throw new IllegalArgumentException("State cannot be null");
         
         this.event = event;
         this.triggerItem = triggerItem;
+        this.stack = stack;
         this.services = services;
         this.state = state;
         this.legacySettings = legacySettings;
@@ -172,6 +191,26 @@ public final class WiredContext {
      */
     public boolean hasTriggerItem() {
         return triggerItem != null;
+    }
+
+    // ========== Stack ==========
+
+    /**
+     * Get the wired stack being executed.
+     * This is useful for conditions that need to access all effects in the stack
+     * (e.g., WiredConditionMovementValidation).
+     * @return the wired stack, or null if not available
+     */
+    public WiredStack stack() {
+        return stack;
+    }
+
+    /**
+     * Check if there is a stack available.
+     * @return true if a stack is present
+     */
+    public boolean hasStack() {
+        return stack != null;
     }
 
     // ========== Targets ==========

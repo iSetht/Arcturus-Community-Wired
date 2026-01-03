@@ -36,9 +36,9 @@ public final class WiredStack {
     private final List<IWiredEffect> effects;
     
     // Extra modifiers
-    private final boolean useOrMode;      // WiredExtraOrEval present
-    private final boolean useRandom;       // WiredExtraRandom present
-    private final boolean useUnseen;       // WiredExtraUnseen present
+    private final boolean useOrMode;       // WiredExtraOrEval present
+    private final boolean useRandom;        // WiredExtraRandom present
+    private final boolean useUnseen;        // WiredExtraUnseen present
 
     /**
      * Create a new wired stack.
