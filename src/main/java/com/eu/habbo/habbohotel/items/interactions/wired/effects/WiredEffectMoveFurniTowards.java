@@ -10,6 +10,7 @@ import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.wired.core.WiredSimulation;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
@@ -240,6 +241,72 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
     @Override
     public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
         return false;
+    }
+
+    @Override
+    public boolean simulate(WiredContext ctx, WiredSimulation simulation) {
+        Room room = ctx.room();
+        RoomLayout layout = room.getLayout();
+        if (layout == null) return true;
+        
+        for (HabboItem item : this.items) {
+            if (item == null) continue;
+            
+            WiredSimulation.SimulatedPosition currentPos = simulation.getItemPosition(item);
+            RoomTile currentTile = layout.getTile(currentPos.x, currentPos.y);
+            if (currentTile == null) continue;
+            
+            RoomUnit target = null;
+            
+            for (int i = 0; i < 3; i++) {
+                if (target != null) break;
+                
+                RoomUserRotation[] rotations = new RoomUserRotation[]{RoomUserRotation.NORTH, RoomUserRotation.EAST, RoomUserRotation.SOUTH, RoomUserRotation.WEST};
+                
+                for (RoomUserRotation rot : rotations) {
+                    RoomTile startTile = currentTile;
+                    
+                    for (int ii = 0; ii <= i; ii++) {
+                        if (startTile == null) break;
+                        startTile = layout.getTileInFront(startTile, rot.getValue());
+                    }
+                    
+                    if (startTile != null && layout.tileExists(startTile.x, startTile.y)) {
+                        Collection<RoomUnit> roomUnitsAtTile = room.getRoomUnitsAt(startTile);
+                        if (!roomUnitsAtTile.isEmpty()) {
+                            target = roomUnitsAtTile.iterator().next();
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (target != null) {
+                RoomUserRotation moveDirection;
+                
+                if (target.getX() == currentPos.x) {
+                    moveDirection = currentPos.y < target.getY() ? RoomUserRotation.SOUTH : RoomUserRotation.NORTH;
+                } else if (target.getY() == currentPos.y) {
+                    moveDirection = currentPos.x < target.getX() ? RoomUserRotation.EAST : RoomUserRotation.WEST;
+                } else if (target.getX() - currentPos.x > target.getY() - currentPos.y) {
+                    moveDirection = target.getX() - currentPos.x > 0 ? RoomUserRotation.EAST : RoomUserRotation.WEST;
+                } else {
+                    moveDirection = target.getY() - currentPos.y > 0 ? RoomUserRotation.SOUTH : RoomUserRotation.NORTH;
+                }
+                
+                RoomTile newTile = layout.getTileInFront(currentTile, moveDirection.getValue());
+                if (newTile != null && newTile.state != RoomTileState.INVALID) {
+                    if (!simulation.isTileValidForItem(newTile.x, newTile.y, item)) {
+                        return false;
+                    }
+                    if (!simulation.moveItem(item, newTile.x, newTile.y, currentPos.z, currentPos.rotation)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        return true;
     }
 
     @Override

@@ -10,6 +10,7 @@ import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.wired.core.WiredSimulation;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
@@ -107,6 +108,52 @@ public class WiredEffectMoveFurniAway extends InteractionWiredEffect {
     @Override
     public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
         return false;
+    }
+
+    @Override
+    public boolean simulate(WiredContext ctx, WiredSimulation simulation) {
+        Room room = ctx.room();
+        if (room.getLayout() == null) return true;
+        
+        for (HabboItem item : this.items) {
+            if (item == null) continue;
+            
+            WiredSimulation.SimulatedPosition currentPos = simulation.getItemPosition(item);
+            RoomTile t = room.getLayout().getTile(currentPos.x, currentPos.y);
+            if (t == null) continue;
+            
+            RoomUnit target = room.getRoomUnits().stream()
+                    .min(Comparator.comparingDouble(a -> a.getCurrentLocation().distance(t)))
+                    .orElse(null);
+            
+            if (target != null && target.getCurrentLocation().distance(t) > 1) {
+                int x = 0;
+                int y = 0;
+                
+                if (target.getX() == currentPos.x) {
+                    y = currentPos.y < target.getY() ? -1 : 1;
+                } else if (target.getY() == currentPos.y) {
+                    x = currentPos.x < target.getX() ? -1 : 1;
+                } else if (target.getX() - currentPos.x > target.getY() - currentPos.y) {
+                    x = target.getX() - currentPos.x > 0 ? -1 : 1;
+                } else {
+                    y = target.getY() - currentPos.y > 0 ? -1 : 1;
+                }
+                
+                short newX = (short) (currentPos.x + x);
+                short newY = (short) (currentPos.y + y);
+                
+                if (!simulation.isTileValidForItem(newX, newY, item)) {
+                    return false;
+                }
+                
+                if (!simulation.moveItem(item, newX, newY, currentPos.z, currentPos.rotation)) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
     }
 
     @Override

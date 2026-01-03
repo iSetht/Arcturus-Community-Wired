@@ -207,9 +207,9 @@ public final class WiredEngine {
             return false;
         }
 
-        // Create execution context
+        // Create execution context with stack reference
         WiredState state = new WiredState(maxStepsPerStack);
-        WiredContext ctx = new WiredContext(event, stack.triggerItem(), services, state);
+        WiredContext ctx = new WiredContext(event, stack.triggerItem(), stack, services, state, null);
 
         // Initial step for trigger
         state.step();
@@ -367,6 +367,15 @@ public final class WiredEngine {
             Collections.shuffle(toExecute);
         }
 
+        // Pre-simulation: if requireFullExecution is enabled, simulate all movements first
+        if (stack.requireFullExecution()) {
+            if (!simulateEffects(toExecute, ctx)) {
+                debug(ctx.room(), "Movement simulation FAILED - stack skipped");
+                return;
+            }
+            debug(ctx.room(), "Movement simulation PASSED - executing effects");
+        }
+
         // Execute selected effects
         for (IWiredEffect effect : toExecute) {
             // Check if effect requires actor
@@ -396,6 +405,40 @@ public final class WiredEngine {
                 }
             }
         }
+    }
+    
+    /**
+     * Simulate all movement effects to verify they can complete successfully.
+     * Uses cumulative state tracking so each effect sees the result of previous moves.
+     * 
+     * @param effects the list of effects to simulate
+     * @param ctx the wired context
+     * @return true if ALL movements would succeed, false if ANY would fail
+     */
+    private boolean simulateEffects(List<IWiredEffect> effects, WiredContext ctx) {
+        WiredSimulation simulation = new WiredSimulation(ctx.room());
+        
+        for (IWiredEffect effect : effects) {
+            // Skip effects that require an actor if there is none
+            if (effect.requiresActor() && !ctx.hasActor()) {
+                continue;
+            }
+            
+            try {
+                boolean success = effect.simulate(ctx, simulation);
+                if (!success || simulation.hasFailed()) {
+                    debug(ctx.room(), "Effect {} simulation failed: {}", 
+                            effect.getClass().getSimpleName(),
+                            simulation.getFailureReason());
+                    return false;
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Error during effect simulation: {}", e.getMessage());
+                return false;
+            }
+        }
+        
+        return true;
     }
 
     /**

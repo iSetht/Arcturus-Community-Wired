@@ -11,6 +11,7 @@ import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.wired.core.WiredSimulation;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
@@ -77,10 +78,85 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
         }
     }
 
-    @Deprecated
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
-        return false;
+    public boolean simulate(WiredContext ctx, WiredSimulation simulation) {
+        for (HabboItem item : this.items) {
+            if (item == null) continue;
+            
+            WiredSimulation.SimulatedPosition currentPos = simulation.getItemPosition(item);
+            short newX = currentPos.x;
+            short newY = currentPos.y;
+            
+            if (this.direction > 0) {
+                List<RoomUserRotation> directionsToCheck = this.getSimulationMovementDirections();
+                boolean foundValidDirection = false;
+                
+                for (RoomUserRotation moveDirection : directionsToCheck) {
+                    short testX = (short) (currentPos.x + ((moveDirection == RoomUserRotation.WEST || moveDirection == RoomUserRotation.NORTH_WEST || moveDirection == RoomUserRotation.SOUTH_WEST) ? -1 : 
+                        (((moveDirection == RoomUserRotation.EAST || moveDirection == RoomUserRotation.SOUTH_EAST || moveDirection == RoomUserRotation.NORTH_EAST) ? 1 : 0))));
+                    short testY = (short) (currentPos.y + ((moveDirection == RoomUserRotation.NORTH || moveDirection == RoomUserRotation.NORTH_EAST || moveDirection == RoomUserRotation.NORTH_WEST) ? 1 : 
+                        ((moveDirection == RoomUserRotation.SOUTH || moveDirection == RoomUserRotation.SOUTH_EAST || moveDirection == RoomUserRotation.SOUTH_WEST) ? -1 : 0)));
+                    
+                    if (simulation.isTileValidForItem(testX, testY, item)) {
+                        foundValidDirection = true;
+                        newX = testX;
+                        newY = testY;
+                        break;
+                    }
+                }
+                
+                if (!foundValidDirection && !directionsToCheck.isEmpty()) {
+                    return false;
+                }
+            }
+            
+            if (newX != currentPos.x || newY != currentPos.y) {
+                if (!simulation.moveItem(item, newX, newY, currentPos.z, currentPos.rotation)) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Get all possible movement directions for simulation.
+     * For random settings, returns all directions that could be chosen.
+     * For fixed directions, returns just that direction.
+     */
+    private List<RoomUserRotation> getSimulationMovementDirections() {
+        List<RoomUserRotation> directions = new ArrayList<>();
+        
+        if (this.direction == 1) {
+            // Random - all 4 cardinal directions
+            directions.add(RoomUserRotation.NORTH);
+            directions.add(RoomUserRotation.EAST);
+            directions.add(RoomUserRotation.SOUTH);
+            directions.add(RoomUserRotation.WEST);
+        } else if (this.direction == 2) {
+            // East-West random
+            directions.add(RoomUserRotation.EAST);
+            directions.add(RoomUserRotation.WEST);
+        } else if (this.direction == 3) {
+            // North-South random
+            directions.add(RoomUserRotation.NORTH);
+            directions.add(RoomUserRotation.SOUTH);
+        } else if (this.direction == 4) {
+            directions.add(RoomUserRotation.SOUTH);
+        } else if (this.direction == 5) {
+            directions.add(RoomUserRotation.EAST);
+        } else if (this.direction == 6) {
+            directions.add(RoomUserRotation.NORTH);
+        } else if (this.direction == 7) {
+            directions.add(RoomUserRotation.WEST);
+        }
+        
+        if (directions.isEmpty()) {
+            directions.add(RoomUserRotation.NORTH); // Fallback
+        }
+        
+        return directions;
     }
 
     @Override
@@ -317,6 +393,11 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
     @Override
     public void cycle(Room room) {
         this.itemCooldowns.clear();
+    }
+
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        return false;
     }
 
     static class JsonData {

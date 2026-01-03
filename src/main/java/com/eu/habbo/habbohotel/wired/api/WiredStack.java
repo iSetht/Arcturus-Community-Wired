@@ -36,9 +36,10 @@ public final class WiredStack {
     private final List<IWiredEffect> effects;
     
     // Extra modifiers
-    private final boolean useOrMode;      // WiredExtraOrEval present
-    private final boolean useRandom;       // WiredExtraRandom present
-    private final boolean useUnseen;       // WiredExtraUnseen present
+    private final boolean useOrMode;       // WiredExtraOrEval present
+    private final boolean useRandom;        // WiredExtraRandom present
+    private final boolean useUnseen;        // WiredExtraUnseen present
+    private final boolean requireFullExecution; // WiredExtraRequireFullExecution present
 
     /**
      * Create a new wired stack.
@@ -52,7 +53,7 @@ public final class WiredStack {
                       IWiredTrigger trigger,
                       List<IWiredCondition> conditions,
                       List<IWiredEffect> effects) {
-        this(triggerItem, trigger, conditions, effects, false, false, false);
+        this(triggerItem, trigger, conditions, effects, false, false, false, false);
     }
 
     /**
@@ -73,6 +74,29 @@ public final class WiredStack {
                       boolean useOrMode,
                       boolean useRandom,
                       boolean useUnseen) {
+        this(triggerItem, trigger, conditions, effects, useOrMode, useRandom, useUnseen, false);
+    }
+    
+    /**
+     * Create a new wired stack with all modifiers.
+     * 
+     * @param triggerItem the wired trigger furniture item
+     * @param trigger the trigger implementation
+     * @param conditions list of conditions
+     * @param effects list of effects
+     * @param useOrMode if true, conditions use OR logic (any pass = success)
+     * @param useRandom if true, select one random effect instead of all
+     * @param useUnseen if true, execute effects in "unseen" order (round-robin)
+     * @param requireFullExecution if true, simulate all movements before executing
+     */
+    public WiredStack(HabboItem triggerItem,
+                      IWiredTrigger trigger,
+                      List<IWiredCondition> conditions,
+                      List<IWiredEffect> effects,
+                      boolean useOrMode,
+                      boolean useRandom,
+                      boolean useUnseen,
+                      boolean requireFullExecution) {
         this.triggerItem = triggerItem;
         this.trigger = trigger;
         this.conditions = conditions != null ? Collections.unmodifiableList(conditions) : Collections.emptyList();
@@ -80,6 +104,7 @@ public final class WiredStack {
         this.useOrMode = useOrMode;
         this.useRandom = useRandom;
         this.useUnseen = useUnseen;
+        this.requireFullExecution = requireFullExecution;
     }
 
     /**
@@ -158,6 +183,16 @@ public final class WiredStack {
     }
 
     /**
+     * Check if full execution simulation is required (WiredExtraRequireFullExecution).
+     * When true, all movement effects are simulated first. If any would fail,
+     * the entire stack is skipped.
+     * @return true if full execution validation is required
+     */
+    public boolean requireFullExecution() {
+        return requireFullExecution;
+    }
+
+    /**
      * Get the number of conditions.
      * @return condition count
      */
@@ -183,6 +218,7 @@ public final class WiredStack {
                 ", orMode=" + useOrMode +
                 ", random=" + useRandom +
                 ", unseen=" + useUnseen +
+                ", requireFullExec=" + requireFullExecution +
                 '}';
     }
 }
