@@ -362,8 +362,9 @@ public final class WiredEngine {
             toExecute = Collections.singletonList(effects.get(index));
             debug(ctx.room(), "Unseen mode: selected effect {}/{}", index + 1, effects.size());
         } else {
-            // Normal mode: execute all
-            toExecute = effects;
+            // Normal mode: execute all in random order
+            toExecute = new ArrayList<>(effects);
+            Collections.shuffle(toExecute);
         }
 
         // Execute selected effects
