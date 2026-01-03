@@ -65,6 +65,13 @@ public final class WiredTickService {
     /** Thread priority for the tick service */
     private int threadPriority = Thread.NORM_PRIORITY + 1;
     
+    /** 
+     * Global tick counter - increments every tick.
+     * All repeaters use this to stay synchronized.
+     * Repeaters fire when (tickCount * tickIntervalMs) % repeatTime == 0
+     */
+    private volatile long tickCount = 0;
+    
     /** The scheduled executor for the tick loop */
     private ScheduledExecutorService scheduler;
     
@@ -393,7 +400,10 @@ public final class WiredTickService {
             return;
         }
         
-        long currentTime = System.currentTimeMillis();
+        // Increment global tick counter
+        tickCount++;
+        
+        long startTime = System.currentTimeMillis();
         int tickablesProcessed = 0;
         
         for (Map.Entry<Integer, Set<WiredTickable>> entry : roomTickables.entrySet()) {
@@ -425,7 +435,9 @@ public final class WiredTickService {
                         continue;
                     }
                     
-                    tickable.onWiredTick(room, currentTime);
+                    // Pass global tick count - all tickables see the same counter
+                    // This keeps repeaters with the same interval perfectly synchronized
+                    tickable.onWiredTick(room, tickCount, tickIntervalMs);
                     tickablesProcessed++;
                 } catch (Exception e) {
                     LOGGER.error("Error in wired tick for tickable {} in room {}: {}", 
@@ -436,8 +448,17 @@ public final class WiredTickService {
         
         // Debug logging if enabled
         if (debugEnabled && tickablesProcessed > 0) {
-            LOGGER.debug("Wired tick completed: {} tickables processed in {}ms", 
-                tickablesProcessed, System.currentTimeMillis() - currentTime);
+            LOGGER.debug("Wired tick #{} completed: {} tickables processed in {}ms", 
+                tickCount, tickablesProcessed, System.currentTimeMillis() - startTime);
         }
+    }
+    
+    /**
+     * Gets the current global tick count.
+     * 
+     * @return the tick count
+     */
+    public long getTickCount() {
+        return tickCount;
     }
 }

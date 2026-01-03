@@ -36,9 +36,6 @@ public class WiredTriggerAtTimeLong extends InteractionWiredTrigger implements W
     /** Accumulated time since last reset (in milliseconds) */
     private long accumulatedTime = 0;
     
-    /** Last tick timestamp for delta calculation */
-    private long lastTickTime = 0;
-    
     /** Whether the timer has fired and is waiting for reset */
     private boolean hasFired = false;
 
@@ -93,7 +90,6 @@ public class WiredTriggerAtTimeLong extends InteractionWiredTrigger implements W
     public void onPickUp() {
         this.executeTime = 0;
         this.accumulatedTime = 0;
-        this.lastTickTime = 0;
         this.hasFired = false;
     }
 
@@ -148,24 +144,14 @@ public class WiredTriggerAtTimeLong extends InteractionWiredTrigger implements W
     // ========== WiredTickable Implementation ==========
 
     @Override
-    public void onWiredTick(Room room, long currentTimeMillis) {
+    public void onWiredTick(Room room, long tickCount, int tickIntervalMs) {
         // Don't tick if already fired (waiting for manual reset)
         if (this.hasFired) {
             return;
         }
         
-        if (this.lastTickTime == 0) {
-            // First tick - initialize
-            this.lastTickTime = currentTimeMillis;
-            return;
-        }
-        
-        // Calculate delta time since last tick
-        long deltaTime = currentTimeMillis - this.lastTickTime;
-        this.lastTickTime = currentTimeMillis;
-        
-        // Accumulate time
-        this.accumulatedTime += deltaTime;
+        // Add fixed tick interval
+        this.accumulatedTime += tickIntervalMs;
         
         // Check if enough time has passed
         if (this.accumulatedTime >= this.executeTime) {
@@ -182,19 +168,16 @@ public class WiredTriggerAtTimeLong extends InteractionWiredTrigger implements W
     public void resetTimer() {
         this.accumulatedTime = 0;
         this.hasFired = false;
-        this.lastTickTime = 0;
     }
 
     @Override
     public void onRegistered(Room room, long currentTimeMillis) {
-        this.lastTickTime = currentTimeMillis;
         this.accumulatedTime = 0;
         this.hasFired = false;
     }
 
     @Override
     public void onUnregistered(Room room) {
-        this.lastTickTime = 0;
         this.accumulatedTime = 0;
         this.hasFired = false;
     }

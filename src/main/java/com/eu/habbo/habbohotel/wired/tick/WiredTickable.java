@@ -24,16 +24,17 @@ import com.eu.habbo.habbohotel.rooms.Room;
 public interface WiredTickable {
     
     /**
-     * Called every 50ms by the WiredTickService.
+     * Called every tick by the WiredTickService.
      * <p>
-     * Implementations should track their own timing internally and trigger
-     * when their configured interval has elapsed.
+     * Implementations should check if they should fire based on the global tick count.
+     * For repeaters: fire when (tickCount * tickIntervalMs) % repeatTime == 0
      * </p>
      * 
      * @param room the room this item is in
-     * @param currentTimeMillis the current system time in milliseconds
+     * @param tickCount the global tick counter (increments each tick)
+     * @param tickIntervalMs the tick interval in milliseconds (e.g., 50)
      */
-    void onWiredTick(Room room, long currentTimeMillis);
+    void onWiredTick(Room room, long tickCount, int tickIntervalMs);
     
     /**
      * Called when the timer should be reset.

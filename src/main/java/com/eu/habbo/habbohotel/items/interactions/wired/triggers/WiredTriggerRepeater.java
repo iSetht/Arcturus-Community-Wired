@@ -33,12 +33,6 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements Wir
 
     /** The interval in milliseconds between triggers */
     protected int repeatTime = DEFAULT_DELAY;
-    
-    /** Accumulated time since last trigger (in milliseconds) */
-    protected long accumulatedTime = 0;
-    
-    /** Last tick timestamp for delta calculation */
-    protected long lastTickTime = 0;
 
     public WiredTriggerRepeater(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
@@ -86,8 +80,6 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements Wir
     @Override
     public void onPickUp() {
         this.repeatTime = DEFAULT_DELAY;
-        this.accumulatedTime = 0;
-        this.lastTickTime = 0;
     }
 
     @Override
@@ -137,11 +129,7 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements Wir
             newRepeatTime = 500;
         }
 
-        // Only reset the counter if the repeat time actually changed
-        if (this.repeatTime != newRepeatTime) {
-            this.accumulatedTime = 0;
-            this.repeatTime = newRepeatTime;
-        }
+        this.repeatTime = newRepeatTime;
 
         return true;
     }
@@ -149,24 +137,13 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements Wir
     // ========== WiredTickable Implementation ==========
 
     @Override
-    public void onWiredTick(Room room, long currentTimeMillis) {
-        if (this.lastTickTime == 0) {
-            // First tick - initialize
-            this.lastTickTime = currentTimeMillis;
-            return;
-        }
+    public void onWiredTick(Room room, long tickCount, int tickIntervalMs) {
+        // Calculate elapsed time based on global tick count
+        // All repeaters with the same interval fire on the exact same tick
+        long elapsedMs = tickCount * tickIntervalMs;
         
-        // Calculate delta time since last tick
-        long deltaTime = currentTimeMillis - this.lastTickTime;
-        this.lastTickTime = currentTimeMillis;
-        
-        // Accumulate time
-        this.accumulatedTime += deltaTime;
-        
-        // Check if enough time has passed
-        if (this.accumulatedTime >= this.repeatTime) {
-            this.accumulatedTime = 0;
-            
+        // Fire when elapsed time is a multiple of repeatTime
+        if (elapsedMs % this.repeatTime == 0) {
             if (this.getRoomId() != 0 && room.isLoaded()) {
                 WiredManager.triggerTimerRepeat(room, this);
             }
@@ -175,20 +152,17 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements Wir
 
     @Override
     public void resetTimer() {
-        this.accumulatedTime = 0;
-        // Don't reset lastTickTime - we want to keep tracking from the current moment
+        // No-op - using global tick count, no local state to reset
     }
 
     @Override
     public void onRegistered(Room room, long currentTimeMillis) {
-        this.lastTickTime = currentTimeMillis;
-        this.accumulatedTime = 0;
+        // No-op - using global tick count
     }
 
     @Override
     public void onUnregistered(Room room) {
-        this.lastTickTime = 0;
-        this.accumulatedTime = 0;
+        // No-op - using global tick count
     }
 
     @Override
