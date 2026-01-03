@@ -5,7 +5,6 @@ import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraOrEval;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraRandom;
-import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraRequireFullExecution;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraUnseen;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomSpecialTypes;
@@ -177,7 +176,6 @@ public final class RoomWiredStackIndex implements WiredStackIndex {
         boolean useOrMode = specialTypes.hasExtraType(x, y, WiredExtraOrEval.class);
         boolean useRandom = specialTypes.hasExtraType(x, y, WiredExtraRandom.class);
         boolean useUnseen = specialTypes.hasExtraType(x, y, WiredExtraUnseen.class);
-        boolean requireFullExecution = specialTypes.hasExtraType(x, y, WiredExtraRequireFullExecution.class);
 
         return new WiredStack(
                 trigger,
@@ -186,8 +184,7 @@ public final class RoomWiredStackIndex implements WiredStackIndex {
                 effects,
                 useOrMode,
                 useRandom,
-                useUnseen,
-                requireFullExecution
+                useUnseen
         );
     }
 
