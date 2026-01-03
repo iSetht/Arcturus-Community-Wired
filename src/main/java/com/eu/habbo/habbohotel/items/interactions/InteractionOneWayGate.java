@@ -7,14 +7,10 @@ import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.HabboItem;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
-import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.ServerMessage;
-import com.eu.habbo.messages.incoming.rooms.users.RoomUserWalkEvent;
 import com.eu.habbo.messages.outgoing.rooms.items.ItemIntStateComposer;
 import com.eu.habbo.threading.runnables.RoomUnitWalkToLocation;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -22,7 +18,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class InteractionOneWayGate extends HabboItem {
-    private static final Logger LOGGER = LoggerFactory.getLogger(InteractionOneWayGate.class);
 
     private boolean walkable = false;
 
@@ -93,7 +88,9 @@ public class InteractionOneWayGate extends HabboItem {
                         unit.setGoalLocation(tile);
                         Emulator.getThreading().run(new RoomUnitWalkToLocation(unit, tile, room, onFail, onFail));
 
-                        Emulator.getThreading().run(() -> WiredHandler.handle(WiredTriggerType.WALKS_ON_FURNI, unit, room, new Object[]{this}), 500);
+                        Emulator.getThreading().run(() -> {
+                            WiredManager.triggerUserWalksOn(room, unit, this);
+                        }, 500);
                     });
 
                     onFail.add(() -> {

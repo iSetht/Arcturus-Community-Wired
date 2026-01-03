@@ -22,7 +22,6 @@ import com.eu.habbo.messages.outgoing.generic.alerts.GenericAlertComposer;
 import com.eu.habbo.messages.outgoing.generic.alerts.HotelWillCloseInMinutesComposer;
 import com.eu.habbo.messages.outgoing.inventory.AddHabboItemComposer;
 import com.eu.habbo.messages.outgoing.inventory.InventoryRefreshComposer;
-import com.eu.habbo.messages.outgoing.users.UserPointsComposer;
 import com.eu.habbo.threading.runnables.ShutdownEmulator;
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.set.hash.THashSet;
@@ -67,7 +66,6 @@ public class CatalogBuyItemAsGiftEvent extends MessageHandler {
                 int ribbonId = this.packet.readInt();
                 boolean showName = this.packet.readBoolean();
 
-                int count = 1;
                 int userId = 0;
 
                 if (!Emulator.getGameEnvironment().getCatalogManager().giftWrappers.containsKey(spriteId) && !Emulator.getGameEnvironment().getCatalogManager().giftFurnis.containsKey(spriteId)) {
@@ -165,7 +163,6 @@ public class CatalogBuyItemAsGiftEvent extends MessageHandler {
                             this.client.sendResponse(new AlertLimitedSoldOutComposer());
                             return;
                         }
-                        item.sellRare();
                     }
 
                     int totalCredits = item.getCredits();
@@ -176,14 +173,28 @@ public class CatalogBuyItemAsGiftEvent extends MessageHandler {
                         return;
                     }
 
-                    CatalogLimitedConfiguration limitedConfiguration;
+                    CatalogLimitedConfiguration limitedConfiguration = null;
                     int limitedStack = 0;
                     int limitedNumber = 0;
                     if (item.isLimited()) {
-                        count = 1;
-                        if (Emulator.getGameEnvironment().getCatalogManager().getLimitedConfig(item).available() == 0 && habbo != null) {
-                            habbo.getClient().sendResponse(new AlertLimitedSoldOutComposer());
+                        if (Emulator.getGameEnvironment().getCatalogManager().getLimitedConfig(item).available() == 0) {
+                            this.client.sendResponse(new AlertLimitedSoldOutComposer());
                             return;
+                        }
+
+                        // Check daily LTD limits for the buyer (sender of the gift)
+                        if (Emulator.getConfig().getBoolean("hotel.catalog.ltd.limit.enabled")) {
+                            int ltdLimit = Emulator.getConfig().getInt("hotel.purchase.ltd.limit.daily.total");
+                            if (this.client.getHabbo().getHabboStats().totalLtds() >= ltdLimit) {
+                                this.client.getHabbo().alert(Emulator.getTexts().getValue("error.catalog.buy.limited.daily.total").replace("%itemname%", item.getBaseItems().iterator().next().getFullName()).replace("%limit%", ltdLimit + ""));
+                                return;
+                            }
+
+                            ltdLimit = Emulator.getConfig().getInt("hotel.purchase.ltd.limit.daily.item");
+                            if (this.client.getHabbo().getHabboStats().totalLtds(item.getId()) >= ltdLimit) {
+                                this.client.getHabbo().alert(Emulator.getTexts().getValue("error.catalog.buy.limited.daily.item").replace("%itemname%", item.getBaseItems().iterator().next().getFullName()).replace("%limit%", ltdLimit + ""));
+                                return;
+                            }
                         }
 
                         limitedConfiguration = Emulator.getGameEnvironment().getCatalogManager().getLimitedConfig(item);
@@ -194,6 +205,9 @@ public class CatalogBuyItemAsGiftEvent extends MessageHandler {
 
                         limitedNumber = limitedConfiguration.getNumber();
                         limitedStack = limitedConfiguration.getTotalSet();
+
+                        // Log the LTD purchase for daily limits
+                        this.client.getHabbo().getHabboStats().addLtdLog(item.getId(), Emulator.getIntUnixTimestamp());
                     }
 
                     THashSet<HabboItem> itemsList = new THashSet<>();
@@ -327,6 +341,13 @@ public class CatalogBuyItemAsGiftEvent extends MessageHandler {
                     if (gift == null) {
                         this.client.sendResponse(new AlertPurchaseFailedComposer(AlertPurchaseFailedComposer.SERVER_ERROR));
                         return;
+                    }
+
+                    // Mark limited items as sold in the database to prevent duplication after catalog reload
+                    if (limitedConfiguration != null) {
+                        for (HabboItem itm : itemsList) {
+                            limitedConfiguration.limitedSold(item.getId(), this.client.getHabbo(), itm);
+                        }
                     }
 
                     if (this.client.getHabbo().getHabboInfo().getId() != userId) {

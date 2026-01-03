@@ -26,8 +26,7 @@ import com.eu.habbo.habbohotel.pets.PetTasks;
 import com.eu.habbo.habbohotel.polls.Poll;
 import com.eu.habbo.habbohotel.polls.PollManager;
 import com.eu.habbo.habbohotel.users.*;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
-import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.incoming.users.UserNuxEvent;
 import com.eu.habbo.messages.outgoing.generic.alerts.GenericErrorMessagesComposer;
 import com.eu.habbo.messages.outgoing.hotelview.HotelViewComposer;
@@ -48,7 +47,6 @@ import com.eu.habbo.plugin.events.rooms.UserVoteRoomEvent;
 import com.eu.habbo.plugin.events.users.HabboAddedToRoomEvent;
 import com.eu.habbo.plugin.events.users.UserEnterRoomEvent;
 import com.eu.habbo.plugin.events.users.UserExitRoomEvent;
-import com.eu.habbo.plugin.events.users.UsernameTalkEvent;
 import gnu.trove.iterator.TIntObjectIterator;
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.procedure.TIntProcedure;
@@ -291,6 +289,14 @@ public class RoomManager {
         return loadRoom(id, false);
     }
 
+    /**
+     * Loads a room, optionally loading its data.
+     * If the room is already being loaded in the background, this will wait for that to complete.
+     * 
+     * @param id The room ID
+     * @param loadData Whether to load room data (items, bots, pets, etc.)
+     * @return The loaded room, or null if not found
+     */
     public Room loadRoom(int id, boolean loadData) {
         Room room = null;
 
@@ -302,7 +308,10 @@ public class RoomManager {
             room = this.activeRooms.get(id);
 
             if (loadData) {
-                if (room.isPreLoaded() && !room.isLoaded()) {
+                if (room.isLoadingInProgress()) {
+                    // Wait for background loading to complete
+                    room.waitForLoad();
+                } else if (room.isPreLoaded() && !room.isLoaded()) {
                     room.loadData();
                 }
             }
@@ -916,7 +925,7 @@ public class RoomManager {
             }
         }
 
-        WiredHandler.handle(WiredTriggerType.ENTER_ROOM, habbo.getRoomUnit(), room, null);
+        WiredManager.triggerUserEntersRoom(room, habbo.getRoomUnit());
         room.habboEntered(habbo);
 
         if (!habbo.getHabboStats().nux && (room.isOwner(habbo) || room.isPublicRoom())) {
@@ -1225,7 +1234,7 @@ public class RoomManager {
     public ArrayList<Room> getRoomsVisited(Habbo habbo, boolean includeSelf, int limit) {
         ArrayList<Room> rooms = new ArrayList<>();
 
-        try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); PreparedStatement statement = connection.prepareStatement("SELECT rooms.* FROM room_enter_log INNER JOIN rooms ON room_enter_log.room_id = rooms.id WHERE user_id = ? AND timestamp >= ? AND rooms.owner_id != ? GROUP BY rooms.id ORDER BY timestamp DESC LIMIT " + limit)) {
+        try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); PreparedStatement statement = connection.prepareStatement("SELECT rooms.* FROM room_enter_log INNER JOIN rooms ON room_enter_log.room_id = rooms.id WHERE user_id = ? AND timestamp >= ? AND rooms.owner_id != ? GROUP BY rooms.id ORDER BY MAX(timestamp) DESC LIMIT " + limit)) {
             statement.setInt(1, habbo.getHabboInfo().getId());
             statement.setInt(2, Emulator.getIntUnixTimestamp() - 259200);
             statement.setInt(3, (includeSelf ? 0 : habbo.getHabboInfo().getId()));

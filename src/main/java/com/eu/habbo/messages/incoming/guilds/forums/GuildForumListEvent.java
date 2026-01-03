@@ -22,7 +22,7 @@ public class GuildForumListEvent extends MessageHandler {
     public void handle() throws Exception {
         int mode = this.packet.readInt();
         int offset = this.packet.readInt();
-        int amount = this.packet.readInt();
+        this.packet.readInt(); // amount - read but not used
 
         Set<Guild> guilds = null;
         switch (mode) {

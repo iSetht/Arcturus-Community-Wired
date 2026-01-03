@@ -56,6 +56,7 @@ public class RoomUnit {
   public int kickCount = 0;
   private int id;
   private RoomTile startLocation;
+  private RoomTile botStartLocation;
   private RoomTile previousLocation;
   private double previousLocationZ;
   private RoomTile currentLocation;
@@ -67,7 +68,6 @@ public class RoomUnit {
   private boolean fastWalk = false;
   private boolean statusUpdate = false;
   private boolean invisible = false;
-  private boolean lastCycleStatus = false;
   private boolean canLeaveRoomByDoor = true;
   private RoomUserRotation bodyRotation = RoomUserRotation.NORTH;
   private RoomUserRotation headRotation = RoomUserRotation.NORTH;
@@ -76,10 +76,11 @@ public class RoomUnit {
   private Deque<RoomTile> path = new LinkedList<>();
   private int handItem;
   private long handItemTimestamp;
+  private long lastRollerTime;
   private int walkTimeOut;
   private int effectId;
   private int effectEndTimestamp;
-  private ScheduledFuture moveBlockingTask;
+  private ScheduledFuture<?> moveBlockingTask;
 
   private int idleTimer;
   private Room room;
@@ -239,10 +240,11 @@ public class RoomUnit {
 
       HabboItem item = room.getTopItemAt(next.x, next.y);
       boolean canSitNextTile = room.canSitAt(next.x, next.y);
+      boolean canLayNextTile = room.canLayAt(next.x, next.y);
 
-      if (!(this.path.isEmpty() && canSitNextTile)) {
+      if (!(this.path.isEmpty() && (canSitNextTile || canLayNextTile))) {
         double height = next.getStackHeight() - this.currentLocation.getStackHeight();
-        if (canMoveToTile(room, next, height, canSitNextTile)) {
+        if (canMoveToTile(room, next, height, canSitNextTile, canLayNextTile)) {
           this.path.clear();
           this.status.remove(RoomUnitStatus.MOVE);
           return false;
@@ -257,7 +259,7 @@ public class RoomUnit {
         }
       }
 
-      if (next.equals(this.goalLocation) && next.state == RoomTileState.SIT && !overrideChecks && (
+      if (next.equals(this.goalLocation) && (next.state == RoomTileState.SIT || next.state == RoomTileState.LAY) && !overrideChecks && (
           item == null || item.getZ() - this.getZ() > RoomLayout.MAXIMUM_STEP_HEIGHT)) {
         this.status.remove(RoomUnitStatus.MOVE);
         return false;
@@ -378,10 +380,10 @@ public class RoomUnit {
   }
 
   private static boolean canMoveToTile(Room room, RoomTile next, double height,
-      boolean canSitNextTile) {
+      boolean canSitNextTile, boolean canLayNextTile) {
     return (!room.tileWalkable(next) || (!RoomLayout.ALLOW_FALLING
         && height < -RoomLayout.MAXIMUM_STEP_HEIGHT) || (next.state == RoomTileState.OPEN
-        && height > RoomLayout.MAXIMUM_STEP_HEIGHT)) && !canSitNextTile;
+        && height > RoomLayout.MAXIMUM_STEP_HEIGHT)) && !canSitNextTile && !canLayNextTile;
   }
 
   public int getId() {
@@ -542,7 +544,16 @@ public class RoomUnit {
       setPreviousLocation(location);
       setCurrentLocation(location);
       this.goalLocation = location;
+      this.botStartLocation = location;
     }
+  }
+
+  public RoomTile getBotStartLocation() {
+    return this.botStartLocation;
+  }
+
+  public void setBotStartLocation(RoomTile botStartLocation) {
+    this.botStartLocation = botStartLocation;
   }
 
   public RoomTile getPreviousLocation() {
@@ -632,6 +643,23 @@ public class RoomUnit {
 
   public int getHandItem() {
     return this.handItem;
+  }
+
+  public long getLastRollerTime() {
+    return this.lastRollerTime;
+  }
+
+  public void setLastRollerTime(long lastRollerTime) {
+    this.lastRollerTime = lastRollerTime;
+  }
+
+  /**
+   * Checks if enough time has passed since the last roller movement to allow rolling again.
+   * This prevents desync issues where the client hasn't finished the roller animation.
+   * @return true if the unit can be rolled, false if still in roller cooldown
+   */
+  public boolean canBeRolled() {
+    return System.currentTimeMillis() - this.lastRollerTime >= 480;
   }
 
   public void setHandItem(int handItem) {
@@ -834,11 +862,11 @@ public class RoomUnit {
                 || !room.hasHabbosAt(t.x, t.y))).collect(Collectors.toList()));
   }
 
-  public ScheduledFuture getMoveBlockingTask() {
+  public ScheduledFuture<?> getMoveBlockingTask() {
     return moveBlockingTask;
   }
 
-  public void setMoveBlockingTask(ScheduledFuture moveBlockingTask) {
+  public void setMoveBlockingTask(ScheduledFuture<?> moveBlockingTask) {
     this.moveBlockingTask = moveBlockingTask;
   }
 }

@@ -1,8 +1,6 @@
 package com.eu.habbo;
 
 import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.ConsoleAppender;
 import com.eu.habbo.core.*;
 import com.eu.habbo.core.consolecommands.ConsoleCommand;
 import com.eu.habbo.database.Database;
@@ -32,13 +30,11 @@ import java.util.regex.Pattern;
 public final class Emulator {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Emulator.class);
-    private static final String OS_NAME = (System.getProperty("os.name") != null ? System.getProperty("os.name") : "Unknown");
-    private static final String CLASS_PATH = (System.getProperty("java.class.path") != null ? System.getProperty("java.class.path") : "Unknown");
 
-    public final static int MAJOR = 3;
-    public final static int MINOR = 5;
-    public final static int BUILD = 4;
-    public final static String PREVIEW = "";
+    public final static int MAJOR = 4;
+    public final static int MINOR = 0;
+    public final static int BUILD = 0;
+    public final static String PREVIEW = "beta";
 
     public static final String version = "Arcturus Morningstar" + " " + MAJOR + "." + MINOR + "." + BUILD + " " + PREVIEW;
     private static final String logo =
@@ -49,7 +45,7 @@ public final class Emulator {
                     "██║╚██╔╝██║██║   ██║██╔══██╗██║╚██╗██║██║██║╚██╗██║██║   ██║╚════██║   ██║   ██╔══██║██╔══██╗\n" +
                     "██║ ╚═╝ ██║╚██████╔╝██║  ██║██║ ╚████║██║██║ ╚████║╚██████╔╝███████║   ██║   ██║  ██║██║  ██║\n" +
                     "╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝\n" +
-                    "Still Rocking in 2025.\n";
+                    "Welcome to 2026.\n";
 
     public static String build = "";
     public static boolean isReady = false;
@@ -82,6 +78,7 @@ public final class Emulator {
         Runtime.getRuntime().addShutdownHook(hook);
     }
 
+    @SuppressWarnings("resource")
     public static void promptEnterKey(){
         System.out.println("\n");
         System.out.println("Press \"ENTER\" if you agree to the terms stated above...");
@@ -91,18 +88,11 @@ public final class Emulator {
 
     public static void main(String[] args) throws Exception {
         try {
-            // Check if running on Windows and not in IntelliJ.
-            // If so, we need to reconfigure the console appender and enable Jansi for colors.
-            if (OS_NAME.startsWith("Windows") && !CLASS_PATH.contains("idea_rt.jar")) {
-                ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
-                ConsoleAppender<ILoggingEvent> appender = (ConsoleAppender<ILoggingEvent>) root.getAppender("Console");
+            // Disable Netty's use of sun.misc.Unsafe to avoid JVM warnings
+            System.setProperty("io.netty.noUnsafe", "true");
+            System.setProperty("io.netty.noPreferDirect", "true");
 
-                appender.stop();
-                appender.setWithJansi(true);
-                appender.start();
-            }
-
-            Locale.setDefault(new Locale("en"));
+            Locale.setDefault(Locale.of("en"));
             setBuild();
             Emulator.stopped = false;
             ConsoleCommand.load();
@@ -116,7 +106,6 @@ public final class Emulator {
                 promptEnterKey();
             }
             System.out.println("");
-            LOGGER.warn("Arcturus Morningstar 3.x is no longer accepting merge requests. Please target MS4 branches if you wish to contribute.");
             LOGGER.info("Follow our development at https://git.krews.org/morningstar/Arcturus-Community, ");
             System.out.println("");
             LOGGER.info("This project is for educational purposes only. This Emulator is an open-source fork of Arcturus created by TheGeneral.");
@@ -215,14 +204,15 @@ public final class Emulator {
         try {
             String filepath = new File(Emulator.class.getProtectionDomain().getCodeSource().getLocation().getPath()).getAbsolutePath();
             MessageDigest md = MessageDigest.getInstance("MD5");// MD5
-            FileInputStream fis = new FileInputStream(filepath);
-            byte[] dataBytes = new byte[1024];
-            int nread = 0;
-            while ((nread = fis.read(dataBytes)) != -1)
-                md.update(dataBytes, 0, nread);
-            byte[] mdbytes = md.digest();
-            for (int i = 0; i < mdbytes.length; i++)
-                sb.append(Integer.toString((mdbytes[i] & 0xff) + 0x100, 16).substring(1));
+            try (FileInputStream fis = new FileInputStream(filepath)) {
+                byte[] dataBytes = new byte[1024];
+                int nread = 0;
+                while ((nread = fis.read(dataBytes)) != -1)
+                    md.update(dataBytes, 0, nread);
+                byte[] mdbytes = md.digest();
+                for (int i = 0; i < mdbytes.length; i++)
+                    sb.append(Integer.toString((mdbytes[i] & 0xff) + 0x100, 16).substring(1));
+            }
         } catch (Exception e) {
             build = "UNKNOWN";
             return;
@@ -414,8 +404,6 @@ public final class Emulator {
     }
 
     public static Date modifyDate(Date date, String timeString) {
-        int totalSeconds = 0;
-
         Calendar c = Calendar.getInstance();
         c.setTime(date);
 

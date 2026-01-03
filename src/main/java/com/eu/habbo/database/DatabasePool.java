@@ -3,11 +3,8 @@ package com.eu.habbo.database;
 import com.eu.habbo.core.ConfigurationManager;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 class DatabasePool {
-    private final Logger log = LoggerFactory.getLogger(DatabasePool.class);
     private HikariDataSource database;
 
     public boolean getStoragePooling(ConfigurationManager config) {
@@ -21,7 +18,7 @@ class DatabasePool {
             databaseConfiguration.addDataSourceProperty("databaseName", config.getValue("db.database", "habbo"));
             databaseConfiguration.addDataSourceProperty("user", config.getValue("db.username"));
             databaseConfiguration.addDataSourceProperty("password", config.getValue("db.password"));
-            databaseConfiguration.addDataSourceProperty("dataSource.logger", "com.mysql.jdbc.log.StandardLogger");
+            databaseConfiguration.addDataSourceProperty("dataSource.logger", "com.mysql.cj.log.StandardLogger");
             databaseConfiguration.addDataSourceProperty("dataSource.logSlowQueries", "true");
             databaseConfiguration.addDataSourceProperty("dataSource.dumpQueriesOnException", "true");
             databaseConfiguration.addDataSourceProperty("prepStmtCacheSize", "500");

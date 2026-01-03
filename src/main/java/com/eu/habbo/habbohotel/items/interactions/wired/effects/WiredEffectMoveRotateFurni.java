@@ -9,43 +9,40 @@ import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
 import com.eu.habbo.habbohotel.rooms.*;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
-import com.eu.habbo.messages.ClientMessage;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
 import gnu.trove.set.hash.THashSet;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implements ICycleable {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(WiredEffectMoveRotateFurni.class);
-
     public static final WiredEffectType type = WiredEffectType.MOVE_ROTATE;
-    private final THashSet<HabboItem> items = new THashSet<>(WiredHandler.MAXIMUM_FURNI_SELECTION / 2);
+    // Use LinkedHashSet to preserve insertion order for consistent movement
+    private final Set<HabboItem> items = new LinkedHashSet<>(WiredManager.MAXIMUM_FURNI_SELECTION / 2);
     private int direction;
     private int rotation;
-    private THashSet<HabboItem> itemCooldowns;
+    // Use thread-safe set for cooldowns since execute() can be called from async threads
+    private final Set<HabboItem> itemCooldowns = ConcurrentHashMap.newKeySet();
 
     public WiredEffectMoveRotateFurni(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
-        this.itemCooldowns = new THashSet<>();
     }
 
     public WiredEffectMoveRotateFurni(int id, int userId, Item item, String extradata, int limitedStack, int limitedSells) {
         super(id, userId, item, extradata, limitedStack, limitedSells);
-        this.itemCooldowns = new THashSet<>();
     }
 
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+    public void execute(WiredContext ctx) {
+        Room room = ctx.room();
         // remove items that are no longer in the room
         this.items.removeIf(item -> Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null);
 
@@ -78,13 +75,17 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
                 }
             }
         }
+    }
 
-        return true;
+    @Deprecated
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        return false;
     }
 
     @Override
     public String getWiredData() {
-        THashSet<HabboItem> itemsToRemove = new THashSet<>(this.items.size() / 2);
+        List<HabboItem> itemsToRemove = new ArrayList<>();
 
         Room room = Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId());
 
@@ -97,7 +98,7 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
             this.items.remove(item);
         }
 
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredManager.getGson().toJson(new JsonData(
                 this.direction,
                 this.rotation,
                 this.getDelay(),
@@ -111,7 +112,7 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
             this.direction = data.direction;
             this.rotation = data.rotation;
@@ -158,19 +159,19 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
 
     @Override
     public void serializeWiredData(ServerMessage message, Room room) {
-        THashSet<HabboItem> items = new THashSet<>();
+        List<HabboItem> itemsToRemove = new ArrayList<>();
 
         for (HabboItem item : this.items) {
             if (item.getRoomId() != this.getRoomId() || Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null)
-                items.add(item);
+                itemsToRemove.add(item);
         }
 
-        for (HabboItem item : items) {
+        for (HabboItem item : itemsToRemove) {
             this.items.remove(item);
         }
 
         message.appendBoolean(false);
-        message.appendInt(WiredHandler.MAXIMUM_FURNI_SELECTION);
+        message.appendInt(WiredManager.MAXIMUM_FURNI_SELECTION);
         message.appendInt(this.items.size());
         for (HabboItem item : this.items)
             message.appendInt(item.getId());
@@ -203,7 +204,10 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
 
         this.items.clear();
         for (int i = 0; i < count; i++) {
-            this.items.add(room.getHabboItem(settings.getFurniIds()[i]));
+            HabboItem item = room.getHabboItem(settings.getFurniIds()[i]);
+            if (item != null) {
+                this.items.add(item);
+            }
         }
 
         this.setDelay(settings.getDelay());
@@ -219,8 +223,6 @@ public class WiredEffectMoveRotateFurni extends InteractionWiredEffect implement
      * @return new rotation
      */
     private int getNewRotation(HabboItem item) {
-        int rotationToAdd = 0;
-
         if(item.getMaximumRotations() == 2) {
             return item.getRotation() == 0 ? 4 : 0;
         }

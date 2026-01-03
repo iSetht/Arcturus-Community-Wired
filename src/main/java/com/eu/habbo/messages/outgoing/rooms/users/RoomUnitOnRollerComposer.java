@@ -1,16 +1,17 @@
 package com.eu.habbo.messages.outgoing.rooms.users;
 
 import com.eu.habbo.Emulator;
+import com.eu.habbo.habbohotel.bots.Bot;
 import com.eu.habbo.habbohotel.items.interactions.InteractionRoller;
+import com.eu.habbo.habbohotel.pets.Pet;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
-import com.eu.habbo.habbohotel.users.Habbo;
+import com.eu.habbo.habbohotel.rooms.RoomUnitType;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.outgoing.MessageComposer;
 import com.eu.habbo.messages.outgoing.Outgoing;
-import gnu.trove.set.hash.THashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,6 +55,24 @@ public class RoomUnitOnRollerComposer extends MessageComposer {
         if (!this.room.isLoaded())
             return null;
 
+        // Early validation: Check if the roller movement is still valid before composing the packet
+        if (this.roller != null && room.getLayout() != null) {
+            // Check if the destination tile is blocked by another unit that moved there
+            if (this.newLocation.hasUnits() && !this.newLocation.getUnits().contains(this.roomUnit)) {
+                return null;
+            }
+            
+            // Check if the unit is still at the expected old location (they might have walked away)
+            if (this.roomUnit.getCurrentLocation() != this.oldLocation) {
+                return null;
+            }
+            
+            // Check if the unit started walking (user input should take priority over rollers)
+            if (this.roomUnit.isWalking()) {
+                return null;
+            }
+        }
+
         this.response.init(Outgoing.ObjectOnRollerComposer);
         this.response.appendInt(this.oldLocation.x);
         this.response.appendInt(this.oldLocation.y);
@@ -67,8 +86,33 @@ public class RoomUnitOnRollerComposer extends MessageComposer {
         this.response.appendString(this.newZ + "");
 
         if (this.roller != null && room.getLayout() != null) {
+            // Mark the unit as recently rolled to prevent desync/bungie effect
+            this.roomUnit.setLastRollerTime(System.currentTimeMillis());
+            
+            // Update location immediately to prevent desync issues where the unit gets 
+            // "stuck" rolling because subsequent roller cycles see the unit at the old position
+            if (!this.roomUnit.isWalking() && this.roomUnit.getCurrentLocation() == this.oldLocation) {
+                this.roomUnit.setLocation(this.newLocation);
+                this.roomUnit.setZ(this.newZ);
+                this.roomUnit.setPreviousLocationZ(this.newZ);
+                
+                // Mark bots and pets for database update when moved by rollers
+                if (this.roomUnit.getRoomUnitType() == RoomUnitType.BOT) {
+                    Bot bot = this.room.getBot(this.roomUnit);
+                    if (bot != null) {
+                        bot.needsUpdate(true);
+                    }
+                } else if (this.roomUnit.getRoomUnitType() == RoomUnitType.PET) {
+                    Pet pet = this.room.getPet(this.roomUnit);
+                    if (pet != null) {
+                        pet.needsUpdate = true;
+                    }
+                }
+            }
+            
+            // Delay the walk on/off events to allow the visual animation to complete
             Emulator.getThreading().run(() -> {
-                if(!this.roomUnit.isWalking() && this.roomUnit.getCurrentLocation() == this.oldLocation) {
+                if (!this.roomUnit.isWalking()) {
                     HabboItem topItem = this.room.getTopItemAt(this.oldLocation.x, this.oldLocation.y);
                     HabboItem topItemNewLocation = this.room.getTopItemAt(this.newLocation.x, this.newLocation.y);
 
@@ -79,10 +123,6 @@ public class RoomUnitOnRollerComposer extends MessageComposer {
                             LOGGER.error("Caught exception", e);
                         }
                     }
-
-                    this.roomUnit.setLocation(this.newLocation);
-                    this.roomUnit.setZ(this.newLocation.getStackHeight());
-                    this.roomUnit.setPreviousLocationZ(this.newLocation.getStackHeight());
 
                     if (topItemNewLocation != null && topItemNewLocation != roller && oldTopItem != topItemNewLocation) {
                         try {

@@ -6,11 +6,10 @@ import com.eu.habbo.habbohotel.items.Item;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
 import com.eu.habbo.habbohotel.rooms.*;
-import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
-import com.eu.habbo.habbohotel.wired.WiredHandler;
-import com.eu.habbo.messages.ClientMessage;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
@@ -55,7 +54,10 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
         List<RoomUserRotation> availableDirections = new ArrayList<>();
         RoomLayout layout = room.getLayout();
 
+        if (layout == null) return availableDirections;
+
         RoomTile currentTile = layout.getTile(item.getX(), item.getY());
+        if (currentTile == null) return availableDirections;
 
         RoomUserRotation[] rotations = new RoomUserRotation[]{RoomUserRotation.NORTH, RoomUserRotation.EAST, RoomUserRotation.SOUTH, RoomUserRotation.WEST};
 
@@ -84,7 +86,8 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
     }
 
     @Override
-    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+    public void execute(WiredContext ctx) {
+        Room room = ctx.room();
 
         THashSet<HabboItem> items = new THashSet<>();
 
@@ -137,7 +140,7 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
                             target = roomUnitsAtTile.iterator().next();
                             if (i == 0) { // i = 0 means right next to it
                                 collided = true;
-                                Emulator.getThreading().run(new WiredCollissionRunnable(target, room, new Object[]{item}));
+                                Emulator.getThreading().run(new WiredCollissionRunnable(target, room));
                             }
                             break;
                         }
@@ -215,9 +218,11 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
                 }
             }
 
-            RoomTile newTile = room.getLayout().getTileInFront(room.getLayout().getTile(item.getX(), item.getY()), moveDirection.getValue());
-
             RoomTile oldLocation = room.getLayout().getTile(item.getX(), item.getY());
+            if (oldLocation == null) continue;
+
+            RoomTile newTile = room.getLayout().getTileInFront(oldLocation, moveDirection.getValue());
+
             double oldZ = item.getZ();
 
             if(newTile != null) {
@@ -229,13 +234,17 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
                 }
             }
         }
+    }
 
-        return true;
+    @Deprecated
+    @Override
+    public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
+        return false;
     }
 
     @Override
     public String getWiredData() {
-        return WiredHandler.getGsonBuilder().create().toJson(new JsonData(
+        return WiredManager.getGson().toJson(new JsonData(
                 this.getDelay(),
                 this.items.stream().map(HabboItem::getId).collect(Collectors.toList())
         ));
@@ -247,7 +256,7 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
         String wiredData = set.getString("wired_data");
 
         if (wiredData.startsWith("{")) {
-            JsonData data = WiredHandler.getGsonBuilder().create().fromJson(wiredData, JsonData.class);
+            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
 
             for (Integer id: data.itemIds) {
@@ -299,7 +308,7 @@ public class WiredEffectMoveFurniTowards extends InteractionWiredEffect {
             this.items.remove(item);
         }
         message.appendBoolean(false);
-        message.appendInt(WiredHandler.MAXIMUM_FURNI_SELECTION);
+        message.appendInt(WiredManager.MAXIMUM_FURNI_SELECTION);
         message.appendInt(this.items.size());
         for (HabboItem item : this.items)
             message.appendInt(item.getId());

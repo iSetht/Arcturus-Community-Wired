@@ -1,9 +1,9 @@
 package com.eu.habbo.habbohotel.items.interactions.wired.conditions;
 
 import com.eu.habbo.habbohotel.items.Item;
-import com.eu.habbo.habbohotel.items.interactions.wired.interfaces.InteractionWiredMatchFurniSettings;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
+import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.habbohotel.wired.WiredConditionType;
 
 import java.sql.ResultSet;
@@ -21,8 +21,14 @@ public class WiredConditionNotMatchStatePosition extends WiredConditionMatchStat
     }
 
     @Override
+    public boolean evaluate(WiredContext ctx) {
+        return !super.evaluate(ctx);
+    }
+
+    @Deprecated
+    @Override
     public boolean execute(RoomUnit roomUnit, Room room, Object[] stuff) {
-        return !super.execute(roomUnit, room, stuff);
+        return false;
     }
 
     @Override

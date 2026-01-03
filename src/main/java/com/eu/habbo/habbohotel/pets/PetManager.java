@@ -101,7 +101,6 @@ public class PetManager {
     }
 
     public static int maxEnergy(int level) {
-        //TODO: Add energy calculation.
         return 100 * level;
     }
 
@@ -501,6 +500,7 @@ public class PetManager {
         return color;
     }
 
+    @SuppressWarnings("unused")
     private int randomLeprechaunColor() {
         return Emulator.getRandom().nextInt(2) == 1 ? 19 : 27;
     }

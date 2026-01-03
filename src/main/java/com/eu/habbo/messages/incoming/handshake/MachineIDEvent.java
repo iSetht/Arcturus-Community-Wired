@@ -13,8 +13,8 @@ public class MachineIDEvent extends MessageHandler {
     @Override
     public void handle() throws Exception {
         String storedMachineId = this.packet.readString();
-        String clientFingerprint = this.packet.readString();
-        String capabilities = this.packet.readString();
+        this.packet.readString(); // clientFingerprint
+        this.packet.readString(); // capabilities
 
         // Update stored machine id if it doesn't match our requirements.
         if (storedMachineId.startsWith("~") || storedMachineId.length() != HASH_LENGTH) {

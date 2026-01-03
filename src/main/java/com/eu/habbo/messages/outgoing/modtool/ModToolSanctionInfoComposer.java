@@ -12,7 +12,6 @@ import gnu.trove.map.hash.THashMap;
 import org.joda.time.DateTime;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 
 public class ModToolSanctionInfoComposer extends MessageComposer {
@@ -62,13 +61,13 @@ public class ModToolSanctionInfoComposer extends MessageComposer {
                     this.response.appendBoolean(item.probationTimestamp >= Emulator.getIntUnixTimestamp()); // is on probation
                     this.response.appendString(modToolSanctions.getSanctionType(modToolSanctionLevelItem)); // current sanction type
                     this.response.appendInt(modToolSanctions.getTimeOfSanction(modToolSanctionLevelItem)); // time of current sanction
-                    this.response.appendInt(30); // TODO: unused?
+                    this.response.appendInt(30); // unused - reserved protocol value
                     this.response.appendString(item.reason.equals("") ? "cfh.reason.EMPTY" : item.reason); // reason
                     this.response.appendString(probationStartTime == null ? Emulator.getDate().toString() : probationStartTime.toString()); // probation start time
-                    this.response.appendInt(0); // TODO: unused?
+                    this.response.appendInt(0); // unused - reserved protocol value
                     this.response.appendString(modToolSanctions.getSanctionType(nextModToolSanctionLevelItem)); // next sanction type
                     this.response.appendInt(modToolSanctions.getTimeOfSanction(nextModToolSanctionLevelItem)); // time to be applied in next sanction (in hours)
-                    this.response.appendInt(30); // TODO: unused?
+                    this.response.appendInt(30); // unused - reserved protocol value
                     this.response.appendBoolean(item.isMuted); // muted
                     this.response.appendString(tradeLockedUntil == null ? "" : tradeLockedUntil.toString()); // trade locked until
                 } else {
@@ -90,13 +89,13 @@ public class ModToolSanctionInfoComposer extends MessageComposer {
         this.response.appendBoolean(false); // is on probation
         this.response.appendString("ALERT"); // last sanction type
         this.response.appendInt(0); // time of current sanction
-        this.response.appendInt(30); // TODO: unused?
+        this.response.appendInt(30); // unused - reserved protocol value
         this.response.appendString("cfh.reason.EMPTY"); // reason
         this.response.appendString(Emulator.getDate().toString()); // probation start time
-        this.response.appendInt(0); // TODO: unused?
+        this.response.appendInt(0); // unused - reserved protocol value
         this.response.appendString("ALERT"); // next sanction type
         this.response.appendInt(0); // time to be applied in next sanction (in hours)
-        this.response.appendInt(30); // TODO: unused?
+        this.response.appendInt(30); // unused - reserved protocol value
         this.response.appendBoolean(false); // muted
         this.response.appendString(""); // trade locked until
 

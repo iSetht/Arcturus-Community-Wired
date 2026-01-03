@@ -679,7 +679,7 @@ public class ItemManager {
 
         if (itemClass != null) {
             try {
-                Constructor c = itemClass.getConstructor(ResultSet.class, Item.class);
+                Constructor<?> c = itemClass.getConstructor(ResultSet.class, Item.class);
                 c.setAccessible(true);
 
                 return (HabboItem) c.newInstance(set, baseItem);

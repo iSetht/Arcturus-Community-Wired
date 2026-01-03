@@ -5,8 +5,6 @@ import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.rooms.RoomUnitStatus;
 import com.eu.habbo.habbohotel.users.HabboItem;
-import com.eu.habbo.messages.ServerMessage;
-import com.eu.habbo.messages.outgoing.rooms.users.RoomUnitOnRollerComposer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,15 +19,13 @@ public class RoomUnitTeleport implements Runnable {
     private int y;
     private double z;
 
-    private int newEffect;
-
     public RoomUnitTeleport(RoomUnit roomUnit, Room room, int x, int y, double z, int newEffect) {
         this.roomUnit = roomUnit;
         this.room = room;
         this.x = x;
         this.y = y;
         this.z = z;
-        this.newEffect = newEffect;
+        // newEffect parameter is unused
     }
 
     @Override
