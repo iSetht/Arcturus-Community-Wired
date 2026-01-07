@@ -155,9 +155,11 @@ public class RoomUnit {
       if (!this.isWalking() && !this.isKicked) {
         if (this.status.remove(RoomUnitStatus.MOVE) == null) {
           Habbo habboT = room.getHabbo(this);
-          if (habboT != null) {
-            habboT.getHabboInfo().getRiding().getRoomUnit().status.remove(RoomUnitStatus.MOVE);
-
+          if (habboT != null && habboT.getHabboInfo() != null && habboT.getHabboInfo().getRiding() != null) {
+            RoomUnit ridingRoomUnit = habboT.getHabboInfo().getRiding().getRoomUnit();
+            if (ridingRoomUnit != null) {
+              ridingRoomUnit.status.remove(RoomUnitStatus.MOVE);
+            }
           }
           return true;
         }

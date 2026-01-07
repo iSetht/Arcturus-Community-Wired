@@ -574,6 +574,10 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
       this.cycleManager.resetIdleCycles();
 
+      // Cancel any existing cycle task before creating a new one
+      if (this.roomCycleTask != null) {
+        this.roomCycleTask.cancel(false);
+      }
       this.roomCycleTask = Emulator.getThreading().getService()
           .scheduleAtFixedRate(this, 500, 500, TimeUnit.MILLISECONDS);
     } catch (Exception e) {
@@ -886,16 +890,20 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
       }
 
       if (this.loaded) {
+        // Set loaded to false FIRST to prevent re-entry and ensure cycle stops
+        this.loaded = false;
+        
         try {
-
           if (this.traxManager != null && !this.traxManager.disposed()) {
             this.traxManager.dispose();
           }
 
-          this.roomCycleTask.cancel(false);
+          if (this.roomCycleTask != null) {
+            this.roomCycleTask.cancel(false);
+            this.roomCycleTask = null;
+          }
           this.scheduledTasks.clear();
           this.scheduledComposers.clear();
-          this.loaded = false;
 
           this.tileCache.clear();
 
