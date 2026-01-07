@@ -451,6 +451,13 @@ public class HabboInfo implements Runnable {
         roomUnit.setZ(riding.getRoomUnit().getZ());
         roomUnit.setPreviousLocationZ(riding.getRoomUnit().getZ());
         roomUnit.stopWalking();
+        
+        // Also update the pet's status now that it's no longer being ridden
+        if (riding.getRoomUnit() != null) {
+            riding.getRoomUnit().setCanWalk(true);
+            room.sendComposer(new RoomUserStatusComposer(riding.getRoomUnit()).compose());
+        }
+        
         room.sendComposer(new RoomUserStatusComposer(roomUnit).compose());
         List<RoomTile> availableTiles = isRemoving ? new ArrayList<>() : this.getCurrentRoom().getLayout().getWalkableTilesAround(roomUnit.getCurrentLocation());
 
