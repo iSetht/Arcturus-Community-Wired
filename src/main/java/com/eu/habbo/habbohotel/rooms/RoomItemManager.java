@@ -17,6 +17,8 @@ import com.eu.habbo.habbohotel.items.interactions.pets.InteractionNest;
 import com.eu.habbo.habbohotel.items.interactions.pets.InteractionPetBreedingNest;
 import com.eu.habbo.habbohotel.items.interactions.pets.InteractionPetDrink;
 import com.eu.habbo.habbohotel.items.interactions.pets.InteractionPetFood;
+import com.eu.habbo.habbohotel.items.interactions.pets.InteractionPetToy;
+import com.eu.habbo.habbohotel.items.interactions.pets.InteractionPetTree;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredBlob;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboInfo;
@@ -661,6 +663,10 @@ public class RoomItemManager {
                 specialTypes.addPetDrink((InteractionPetDrink) item);
             } else if (item instanceof InteractionPetFood) {
                 specialTypes.addPetFood((InteractionPetFood) item);
+            } else if (item instanceof InteractionPetToy) {
+                specialTypes.addPetToy((InteractionPetToy) item);
+            } else if (item instanceof InteractionPetTree) {
+                specialTypes.addPetTree((InteractionPetTree) item);
             } else if (item instanceof InteractionMoodLight ||
                        item instanceof InteractionPyramid ||
                        item instanceof InteractionMusicDisc ||
@@ -780,6 +786,10 @@ public class RoomItemManager {
             specialTypes.removePetDrink((InteractionPetDrink) item);
         } else if (item instanceof InteractionPetFood) {
             specialTypes.removePetFood((InteractionPetFood) item);
+        } else if (item instanceof InteractionPetToy) {
+            specialTypes.removePetToy((InteractionPetToy) item);
+        } else if (item instanceof InteractionPetTree) {
+            specialTypes.removePetTree((InteractionPetTree) item);
         } else if (item instanceof InteractionMoodLight ||
                    item instanceof InteractionPyramid ||
                    item instanceof InteractionMusicDisc ||

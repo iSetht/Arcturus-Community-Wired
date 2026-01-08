@@ -33,7 +33,7 @@ public final class Emulator {
 
     public final static int MAJOR = 4;
     public final static int MINOR = 0;
-    public final static int BUILD = 1;
+    public final static int BUILD = 2;
     public final static String PREVIEW = "beta";
 
     public static final String version = "Arcturus Morningstar" + " " + MAJOR + "." + MINOR + "." + BUILD + " " + PREVIEW;
