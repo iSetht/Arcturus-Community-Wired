@@ -6,6 +6,9 @@ import com.eu.habbo.habbohotel.pets.Pet;
 import com.eu.habbo.habbohotel.rooms.*;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.messages.incoming.rooms.users.RoomUserActionEvent;
+
 import gnu.trove.set.hash.THashSet;
 import org.apache.commons.math3.util.Pair;
 
@@ -29,7 +32,7 @@ public class InteractionWater extends InteractionDefault {
 
     public InteractionWater(int id, int userId, Item item, String extradata, int limitedStack, int limitedSells) {
         super(id, userId, item, extradata, limitedStack, limitedSells);
-        this.isDeepWater = false;
+        this.isDeepWater = item.getName().equalsIgnoreCase(DEEP_WATER_NAME);
         this.isInRoom = this.getRoomId() != 0;
     }
 
@@ -74,6 +77,13 @@ public class InteractionWater extends InteractionDefault {
 
         Pet pet = room.getPet(roomUnit);
 
+        Habbo habbo = room.getHabbo(roomUnit);
+        if (habbo != null && this.isDeepWater){
+            roomUnit.setStatus(RoomUnitStatus.SWIM, "");
+            RoomUserActionEvent.cacheUserAction(roomUnit, RoomUserAction.SWIM.getAction());
+            WiredManager.triggerUserPerformAction(room, roomUnit, RoomUserAction.SWIM.getAction());
+        }
+
         if(pet == null)
             return;
 
@@ -85,6 +95,12 @@ public class InteractionWater extends InteractionDefault {
     @Override
     public void onWalkOff(RoomUnit roomUnit, Room room, Object[] objects) throws Exception {
         super.onWalkOff(roomUnit, room, objects);
+
+        // Clear SWIM status for Habbos leaving deep water
+        Habbo habbo = room.getHabbo(roomUnit);
+        if (habbo != null && this.isDeepWater) {
+            roomUnit.removeStatus(RoomUnitStatus.SWIM);
+        }
 
         Pet pet = room.getPet(roomUnit);
 

@@ -30,6 +30,25 @@ public final class WiredTargets {
     private final Set<RoomUnit> users = new LinkedHashSet<>();
     private final Set<HabboItem> items = new LinkedHashSet<>();
 
+    private boolean itemsUsingSelector = false;
+    private boolean usersUsingSelector = false;
+
+    /**
+     * Check for item selector 
+     * @return
+     */
+    public boolean hasItemsUsingSelector() {
+        return itemsUsingSelector;
+    }
+
+    /**
+     * Check for user selector
+     * @return
+     */
+    public boolean hasUsersUsingSelector() {
+        return usersUsingSelector;
+    }
+
     /**
      * Get all targeted users (read-only view).
      * @return unmodifiable set of room units
@@ -88,6 +107,7 @@ public final class WiredTargets {
         return items.isEmpty() ? null : items.iterator().next();
     }
 
+
     // Mutators (used by engine/selector layer)
 
     /**
@@ -118,6 +138,7 @@ public final class WiredTargets {
      */
     public void setUsers(Iterable<RoomUnit> newUsers) {
         users.clear();
+        usersUsingSelector = true;
         if (newUsers != null) {
             for (RoomUnit u : newUsers) {
                 if (u != null) users.add(u);
@@ -131,6 +152,7 @@ public final class WiredTargets {
      */
     public void setItems(Iterable<HabboItem> newItems) {
         items.clear();
+        itemsUsingSelector = true;
         if (newItems != null) {
             for (HabboItem i : newItems) {
                 if (i != null) items.add(i);

@@ -1,7 +1,7 @@
 package com.eu.habbo.habbohotel.wired.core;
 
-import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.bots.Bot;
+import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectTeleportToFurni;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomChatMessage;
 import com.eu.habbo.habbohotel.rooms.RoomChatMessageBubbles;
@@ -9,10 +9,7 @@ import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
-import com.eu.habbo.messages.outgoing.rooms.users.RoomUserEffectComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserWhisperComposer;
-import com.eu.habbo.threading.runnables.RoomUnitTeleport;
-import com.eu.habbo.threading.runnables.SendRoomUnitEffectComposer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,18 +66,8 @@ public final class DefaultWiredServices implements WiredServices {
     @Override
     public void teleportUser(Room room, RoomUnit user, RoomTile tile) {
         if (room == null || user == null || tile == null) return;
-        
-        // Show teleport effect
-        room.sendComposer(new RoomUserEffectComposer(user, 4).compose());
-        Emulator.getThreading().run(new SendRoomUnitEffectComposer(room, user), WiredManager.TELEPORT_DELAY + 1000);
-        
-        // Execute teleport
-        double height = tile.getStackHeight();
-        Emulator.getThreading().run(() -> user.isWiredTeleporting = true, Math.max(0, WiredManager.TELEPORT_DELAY - 500));
-        Emulator.getThreading().run(
-            new RoomUnitTeleport(user, room, tile.x, tile.y, height, user.getEffectId()),
-            WiredManager.TELEPORT_DELAY
-        );
+
+        WiredEffectTeleportToFurni.teleportUnitToTile(user, tile, false);
     }
 
     @Override

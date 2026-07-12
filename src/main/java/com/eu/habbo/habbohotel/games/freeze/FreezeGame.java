@@ -8,7 +8,7 @@ import com.eu.habbo.habbohotel.items.interactions.games.freeze.InteractionFreeze
 import com.eu.habbo.habbohotel.items.interactions.games.freeze.InteractionFreezeTile;
 import com.eu.habbo.habbohotel.items.interactions.games.freeze.gates.InteractionFreezeGate;
 import com.eu.habbo.habbohotel.items.interactions.games.freeze.scoreboards.InteractionFreezeScoreboard;
-import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectTeleport;
+import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectTeleportToFurni;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomLayout;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
@@ -218,7 +218,7 @@ public class FreezeGame extends Game {
                     for (HabboItem item : this.room.getItemsAt(habbo.getRoomUnit().getCurrentLocation())) {
                         if (item instanceof InteractionFreezeTile) {
                             HabboItem exitTile = this.room.getRoomSpecialTypes().getRandomFreezeExitTile();
-                            WiredEffectTeleport.teleportUnitToTile(habbo.getRoomUnit(), this.room.getLayout().getTile(exitTile.getX(), exitTile.getY()));
+                            WiredEffectTeleportToFurni.teleportUnitToTile(habbo.getRoomUnit(), this.room.getLayout().getTile(exitTile.getX(), exitTile.getY()));
                         }
                     }
                 }

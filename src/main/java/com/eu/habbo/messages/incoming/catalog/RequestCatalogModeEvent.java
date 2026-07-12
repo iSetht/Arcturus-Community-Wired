@@ -7,15 +7,14 @@ import com.eu.habbo.messages.outgoing.catalog.CatalogPagesListComposer;
 public class RequestCatalogModeEvent extends MessageHandler {
     @Override
     public void handle() throws Exception {
+        String mode = this.packet.readString();
 
-        String MODE = this.packet.readString();
-        if (MODE.equalsIgnoreCase("normal")) {
+        if (mode.equalsIgnoreCase("normal")) {
             this.client.sendResponse(new CatalogModeComposer(0));
-            this.client.sendResponse(new CatalogPagesListComposer(this.client.getHabbo(), MODE));
         } else {
             this.client.sendResponse(new CatalogModeComposer(1));
-            this.client.sendResponse(new CatalogPagesListComposer(this.client.getHabbo(), MODE));
         }
 
+        this.client.sendResponse(new CatalogPagesListComposer(this.client.getHabbo(), mode));
     }
 }

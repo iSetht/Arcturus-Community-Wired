@@ -39,6 +39,8 @@ public class RequestDeleteRoomEvent extends MessageHandler {
                     return;
                 }
 
+                List<Habbo> roomHabbos = new ArrayList<>(room.getHabbos());
+
                 room.ejectAll();
                 room.ejectUserFurni(room.getOwnerId());
 
@@ -75,8 +77,15 @@ public class RequestDeleteRoomEvent extends MessageHandler {
                     }
                 }
 
+                for (Habbo habbo : roomHabbos) {
+                    if (habbo != null && habbo.getClient() != null) {
+                        Emulator.getGameEnvironment().getRoomManager().leaveRoom(habbo, room);
+                    }
+                }
+
                 room.preventUnloading = false;
                 room.dispose();
+
                 Emulator.getGameEnvironment().getRoomManager().uncacheRoom(room);
 
                 try (Connection connection = Emulator.getDatabase().getDataSource().getConnection()) {

@@ -9,6 +9,7 @@ import com.eu.habbo.habbohotel.pets.Pet;
 import com.eu.habbo.habbohotel.pets.RideablePet;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
+import com.eu.habbo.habbohotel.wired.core.WiredMovement;
 import com.eu.habbo.messages.outgoing.MessageComposer;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUnitOnRollerComposer;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages roller mechanics within a room.
@@ -28,12 +30,46 @@ import java.util.List;
  */
 public class RoomRollerManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(RoomRollerManager.class);
+    private static final int POSTURE_ROLL_GRACE_MS = 100;
+    private static final ConcurrentHashMap<Integer, Long> POSTURE_ROLLING_UNTIL = new ConcurrentHashMap<>();
 
     private final Room room;
     private long rollerCycle = System.currentTimeMillis();
 
     public RoomRollerManager(Room room) {
         this.room = room;
+    }
+
+    public static void markPostureRolling(RoomUnit roomUnit, int durationMs) {
+        if (roomUnit == null) {
+            return;
+        }
+
+        POSTURE_ROLLING_UNTIL.put(roomUnit.getId(), System.currentTimeMillis() + durationMs + POSTURE_ROLL_GRACE_MS);
+    }
+
+    public static boolean isPostureRolling(RoomUnit roomUnit) {
+        if (roomUnit == null) {
+            return false;
+        }
+
+        Long rollingUntil = POSTURE_ROLLING_UNTIL.get(roomUnit.getId());
+        if (rollingUntil == null) {
+            return false;
+        }
+
+        if (rollingUntil <= System.currentTimeMillis()) {
+            POSTURE_ROLLING_UNTIL.remove(roomUnit.getId(), rollingUntil);
+            return false;
+        }
+
+        return true;
+    }
+
+    public static void clearPostureRolling(RoomUnit roomUnit) {
+        if (roomUnit != null) {
+            POSTURE_ROLLING_UNTIL.remove(roomUnit.getId());
+        }
     }
 
     /**
@@ -95,6 +131,10 @@ public class RoomRollerManager {
 
         THashSet<HabboItem> itemsOnRoller = new THashSet<>();
         for (HabboItem item : this.room.getItemsAt(rollerTile)) {
+            if (WiredMovement.isFurniActivelyMoving(this.room, item)) {
+                continue;
+            }
+
             if (item.getZ() >= roller.getZ() + Item.getCurrentHeight(roller)) {
                 itemsOnRoller.add(item);
             }
@@ -308,8 +348,26 @@ public class RoomRollerManager {
             // For riding users, use pet-relative Z values
             double riderOldZ = isRiding ? unit.getZ() : unit.getZ();
             double riderNewZ = isRiding ? newZ : (unit.getZ() + zOffset);
+
+            HabboItem rollingPostureItem = getRollingPostureItem(unit, rollerTile, itemsOnRoller);
+            boolean rollingWithPostureItem = rollingPostureItem != null;
+            boolean preservePosture = rollingWithPostureItem
+                || unit.hasStatus(RoomUnitStatus.SIT)
+                || unit.hasStatus(RoomUnitStatus.LAY);
+            // Mark ALL rolled units as posture-rolling so that wired effects fired on landing
+            // use MOVEMENT_TYPE_SLIDE rather than MOVEMENT_TYPE_MOVE, preventing the false
+            // walk-on trigger caused by the unit/furniture processing order in the roller cycle.
+            markPostureRolling(unit, getRollerAnimationDelay());
+            if (rollingPostureItem != null) {
+                if (unit.hasStatus(RoomUnitStatus.SIT)) {
+                    unit.setStatus(RoomUnitStatus.SIT, (Item.getCurrentHeight(rollingPostureItem) * 1.0D) + "");
+                    unit.setRotation(RoomUserRotation.values()[rollingPostureItem.getRotation()]);
+                    unit.sitUpdate = true;
+                }
+            }
+
             messages.add(new RoomUnitOnRollerComposer(unit, roller, unit.getCurrentLocation(),
-                riderOldZ, tileInFront, riderNewZ, this.room));
+                riderOldZ, tileInFront, riderNewZ, this.room, 0, 0, 0, false, false, preservePosture));
 
             if (itemsOnRoller.isEmpty()) {
                 HabboItem item = this.room.getTopItemAt(tileInFront.x, tileInFront.y);
@@ -333,6 +391,31 @@ public class RoomRollerManager {
                 unit.sitUpdate = true;
             }
         }
+    }
+
+    private HabboItem getRollingPostureItem(RoomUnit unit, RoomTile rollerTile, THashSet<HabboItem> itemsOnRoller) {
+        if (unit == null || rollerTile == null || itemsOnRoller == null || itemsOnRoller.isEmpty()) {
+            return null;
+        }
+
+        if (unit.hasStatus(RoomUnitStatus.SIT)) {
+            HabboItem chair = this.room.getTallestChair(rollerTile);
+            if (chair != null && itemsOnRoller.contains(chair)) {
+                return chair;
+            }
+        }
+
+        if (unit.hasStatus(RoomUnitStatus.LAY)) {
+            HabboItem topItem = this.room.getTopItemAt(rollerTile.x, rollerTile.y);
+            if (topItem != null && topItem.getBaseItem().allowLay() && itemsOnRoller.contains(topItem)) {
+                return topItem;
+            }
+        }
+
+        return null;
+    }
+    private int getRollerAnimationDelay() {
+        return this.room.getRollerSpeed() == 0 ? 250 : InteractionRoller.DELAY;
     }
 
     /**

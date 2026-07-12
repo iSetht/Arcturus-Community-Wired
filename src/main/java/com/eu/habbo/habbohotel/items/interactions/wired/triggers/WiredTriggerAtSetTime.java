@@ -1,6 +1,7 @@
 package com.eu.habbo.habbohotel.items.interactions.wired.triggers;
 
 import com.eu.habbo.habbohotel.items.Item;
+import com.eu.habbo.habbohotel.items.ICycleable;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
@@ -21,17 +22,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One-shot timer wired trigger that fires once after a set time.
+ * Long-interval one-shot timer wired trigger.
  * <p>
  * Uses the new 50ms tick system via {@link WiredTickable} for accurate
- * timing. After firing, the timer automatically resets and starts again.
+ * timing with 5-second increments.
  * </p>
  */
-public class WiredTriggerAtSetTime extends InteractionWiredTrigger implements WiredTickable, WiredTriggerReset {
-    public static final WiredTriggerType type = WiredTriggerType.AT_GIVEN_TIME;
-
+public class WiredTriggerAtSetTime extends InteractionWiredTrigger implements WiredTickable, WiredTriggerReset, ICycleable {
+    private static final WiredTriggerType type = WiredTriggerType.AT_SET_TIME;
+    
     /** The time in milliseconds until the trigger fires */
-    public int executeTime;
+    private int executeTime;
     
     /** Accumulated time since last reset (in milliseconds) */
     private long accumulatedTime = 0;
@@ -81,7 +82,7 @@ public class WiredTriggerAtSetTime extends InteractionWiredTrigger implements Wi
             this.executeTime = 20 * 500;
         }
         
-        // Initialize for tick system - will be registered by RoomItemManager
+        // Initialize for tick system
         this.accumulatedTime = 0;
         this.hasFired = false;
     }
@@ -110,13 +111,14 @@ public class WiredTriggerAtSetTime extends InteractionWiredTrigger implements Wi
         message.appendInt(this.executeTime / 500);
         message.appendInt(1);
         message.appendInt(this.getType().code);
+        message.appendInt(0);
 
         if (!this.isTriggeredByRoomUnit()) {
             List<Integer> invalidTriggers = new ArrayList<>();
             room.getRoomSpecialTypes().getEffects(this.getX(), this.getY()).forEach(new TObjectProcedure<InteractionWiredEffect>() {
                 @Override
                 public boolean execute(InteractionWiredEffect object) {
-                    if (object.requiresTriggeringUser()) {
+                    if (object.requiresActor()) {
                         invalidTriggers.add(object.getBaseItem().getSpriteId());
                     }
                     return true;
@@ -135,16 +137,42 @@ public class WiredTriggerAtSetTime extends InteractionWiredTrigger implements Wi
     public boolean saveData(WiredSettings settings) {
         if (settings.getIntParams().length < 1) return false;
         this.executeTime = settings.getIntParams()[0] * 500;
-
-        this.resetTimer();
+        this.accumulatedTime = 0;
+        this.hasFired = false;
 
         return true;
+    }
+
+    @Override
+    public void cycle(Room room) {
+        if (!this.isRoomCycleAligned() || this.hasFired) {
+            return;
+        }
+
+        this.accumulatedTime += 500;
+
+        if (this.accumulatedTime >= this.executeTime) {
+            this.hasFired = true;
+            this.accumulatedTime = 0;
+
+            if (this.getRoomId() != 0 && room.isLoaded()) {
+                WiredManager.triggerTimerTick(room, this);
+            }
+        }
+    }
+
+    private boolean isRoomCycleAligned() {
+        return this.executeTime >= 500 && this.executeTime % 500 == 0;
     }
 
     // ========== WiredTickable Implementation ==========
 
     @Override
     public void onWiredTick(Room room, long tickCount, int tickIntervalMs) {
+        if (this.isRoomCycleAligned()) {
+            return;
+        }
+
         // Don't tick if already fired (waiting for manual reset)
         if (this.hasFired) {
             return;
@@ -184,7 +212,7 @@ public class WiredTriggerAtSetTime extends InteractionWiredTrigger implements Wi
 
     @Override
     public boolean isOneShot() {
-        return true; // One-shot timer, fires once then waits for reset
+        return true; // One-shot timer
     }
 
     // ========== JSON Data ==========

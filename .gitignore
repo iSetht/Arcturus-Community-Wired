@@ -15,3 +15,21 @@ config.ini
 *.zip
 .DS_Store
 
+.codersinflow
+.vscode
+node_modules
+.env
+.venv
+.codex
+out
+dist
+*.vsix
+.claude
+CLAUDE.md
+.git
+*.tmp
+__pycache__
+*.pyc
+.env.local
+.next
+.github

@@ -1,6 +1,37 @@
 package com.eu.habbo.messages.incoming;
 
 public class Incoming {
+    public static final int ChestOpenEvent = 1460;
+    public static final int ChestCloseEvent = 3739;
+    public static final int ChestWithdrawFurniEvent = 1084;
+    public static final int ChestWithdrawCoinsEvent = 2728;
+    public static final int ChestWithdrawAllEvent = 1336;
+    public static final int ChestStartDepositEvent = 2377;
+    public static final int ChestDepositItemsEvent = 1014;
+    public static final int ChestDepositAcceptEvent = 1966;
+    public static final int ChestDepositCancelEvent = 212;
+    public static final int ChestSaveSettingsEvent = 3901;
+    public static final int ChestContractSaveEvent = 4071;
+    public static final int WiredCreatorToolsChestLogsEvent = 4074;
+
+    public static final int WiredSelectorSaveDataEvent = 3951;
+    public static final int WiredVariableSaveDataEvent = 3953;
+    public static final int WiredExtraSaveDataEvent = 3955;
+    public static final int WiredCreatorToolsRoomStatsEvent = 4050;
+    public static final int WiredCreatorToolsSaveSettingsEvent = 4053;
+    public static final int WiredCreatorToolsInspectionValuesEvent = 4054;
+    public static final int WiredCreatorToolsVariableActionEvent = 4055;
+    public static final int WiredCreatorToolsLogsEvent = 4056;
+    public static final int WiredCreatorToolsVariableHighlightEvent = 4057;
+    public static final int WiredCreatorToolsRoomActionEvent = 4058;
+    public static final int WiredCreatorToolsCatalogEvent = 4059;
+    public static final int WiredCreatorToolsCreateItemEvent = 4060;
+    public static final int WiredCreatorToolsCancelPlacementEvent = 4061;
+    public static final int WiredMouseHoldStartEvent = 4062;
+    public static final int WiredMouseHoldReleaseEvent = 4063;
+    public static final int WiredMouseHoldSubscriptionEvent = 4065;
+    public static final int AreaHideSaveDataEvent = 4068;
+    public static final int WiredClickSettingsToggleEvent = 3958;
     public static final int PongEvent = 2596;
     public static final int ChangeNameCheckUsernameEvent = 3950;
     public static final int ConfirmChangeNameEvent = 2977;
@@ -91,6 +122,8 @@ public class Incoming {
     public static final int ModToolRequestRoomChatlogEvent = 2587;
     public static final int UserSaveLookEvent = 2730;
     public static final int ToggleFloorItemEvent = 99;
+    public static final int ClickFurniEvent = 2789;
+    public static final int ClickAvatarEvent = 2790;
     public static final int TradeUnAcceptEvent = 1444;
     public static final int WiredTriggerSaveDataEvent = 1520;
     public static final int RoomRemoveAllRightsEvent = 2683;

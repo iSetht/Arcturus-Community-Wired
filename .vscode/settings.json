@@ -1,3 +1,6 @@
 {
-    "java.configuration.updateBuildConfiguration": "automatic"
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "diffEditor.renderSideBySide": false,
+    "diffEditor.experimental.showMoves": true,
+    "scm.diffDecorationsGutterAction": "diff"
 }

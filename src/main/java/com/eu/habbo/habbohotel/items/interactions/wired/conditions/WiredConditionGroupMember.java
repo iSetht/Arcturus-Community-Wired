@@ -14,7 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class WiredConditionGroupMember extends InteractionWiredCondition {
-    public static final WiredConditionType type = WiredConditionType.ACTOR_IN_GROUP;
+    public static final WiredConditionType type = WiredConditionType.AVATAR_IN_GROUP;
 
     public WiredConditionGroupMember(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);

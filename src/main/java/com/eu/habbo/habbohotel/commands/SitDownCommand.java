@@ -2,8 +2,11 @@ package com.eu.habbo.habbohotel.commands;
 
 import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.gameclients.GameClient;
+import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnitStatus;
+import com.eu.habbo.habbohotel.rooms.RoomUserAction;
 import com.eu.habbo.habbohotel.users.Habbo;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 
 public class SitDownCommand extends Command {
     public SitDownCommand() {
@@ -18,8 +21,10 @@ public class SitDownCommand extends Command {
             } else if (habbo.getRoomUnit().hasStatus(RoomUnitStatus.SIT)) {
                 continue;
             }
-
+            Room room = gameClient.getHabbo().getHabboInfo().getCurrentRoom();
             gameClient.getHabbo().getHabboInfo().getCurrentRoom().makeSit(habbo);
+            WiredManager.triggerUserPerformAction(room, habbo.getRoomUnit(), RoomUserAction.SIT.getAction());
+
         }
 
         return true;

@@ -66,6 +66,7 @@ public class RoomChatMessage implements Runnable, ISerialize, DatabaseLoggable {
         this.unfilteredMessage = this.message;
         this.timestamp = Emulator.getIntUnixTimestamp();
 
+        this.applyTeamBubble();
         this.checkEmotion();
 
         this.filter();
@@ -93,13 +94,12 @@ public class RoomChatMessage implements Runnable, ISerialize, DatabaseLoggable {
         this.message = message;
         this.unfilteredMessage = message;
         this.habbo = habbo;
-        this.bubble = bubble;
+        this.bubble = this.resolveBubble(bubble);
         this.checkEmotion();
         this.roomUnitId = habbo.getRoomUnit().getId();
         this.message = this.message.replace("\r", "").replace("\n", "");
 
-        if (this.bubble.isOverridable() && this.getHabbo().getHabboStats().chatColor != RoomChatMessageBubbles.NORMAL)
-            this.bubble = this.getHabbo().getHabboStats().chatColor;
+        this.applyChatColor();
     }
 
     public RoomChatMessage(String message, Habbo habbo, Habbo targetHabbo, RoomChatMessageBubbles bubble) {
@@ -107,13 +107,34 @@ public class RoomChatMessage implements Runnable, ISerialize, DatabaseLoggable {
         this.unfilteredMessage = message;
         this.habbo = habbo;
         this.targetHabbo = targetHabbo;
-        this.bubble = bubble;
+        this.bubble = this.resolveBubble(bubble);
         this.checkEmotion();
         this.roomUnitId = this.habbo.getRoomUnit().getId();
         this.message = this.message.replace("\r", "").replace("\n", "");
 
-        if (this.bubble.isOverridable() && this.getHabbo().getHabboStats().chatColor != RoomChatMessageBubbles.NORMAL)
+        this.applyChatColor();
+    }
+
+    private RoomChatMessageBubbles resolveBubble(RoomChatMessageBubbles bubble) {
+        return bubble != null ? bubble : RoomChatMessageBubbles.NORMAL;
+    }
+
+    private void applyChatColor() {
+        if (this.bubble.isOverridable() && this.getHabbo().getHabboStats().chatColor != RoomChatMessageBubbles.NORMAL) {
             this.bubble = this.getHabbo().getHabboStats().chatColor;
+        }
+
+        this.applyTeamBubble();
+    }
+
+    private void applyTeamBubble() {
+        if (this.bubble.isOverridable() && this.getHabbo().getHabboInfo().getGamePlayer() != null) {
+            RoomChatMessageBubbles teamBubble = RoomChatMessageBubbles.getTeamBubble(this.getHabbo().getHabboInfo().getGamePlayer().getTeamColor());
+
+            if (teamBubble != null) {
+                this.bubble = teamBubble;
+            }
+        }
     }
 
     private void checkEmotion() {

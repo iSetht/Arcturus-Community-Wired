@@ -14,7 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class WiredConditionNotInGroup extends InteractionWiredCondition {
-    public static final WiredConditionType type = WiredConditionType.NOT_ACTOR_IN_GROUP;
+    public static final WiredConditionType type = WiredConditionType.NOT_AVATAR_IN_GROUP;
 
     public WiredConditionNotInGroup(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);

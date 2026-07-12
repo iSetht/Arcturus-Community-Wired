@@ -1,5 +1,9 @@
 package com.eu.habbo.habbohotel.wired.core;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -31,6 +35,16 @@ public final class WiredState {
     private long startTimeMs;
     private boolean aborted = false;
     private String abortReason;
+
+    // Per-execution context variable storage.
+    // Context variables live only for the duration of this signal execution.
+    private final Map<String, Long> contextValues = new HashMap<>();
+    private final Map<String, Long> contextCreatedAtMs = new HashMap<>();
+    private final Map<String, Long> contextUpdatedAtMs = new HashMap<>();
+    private final Set<String> contextGiven = new HashSet<>();
+    private final Map<String, Map<String, Long>> scopedContextValues = new HashMap<>();
+    private final Map<String, Set<String>> scopedContextGiven = new HashMap<>();
+    private String contextScopeKey = "";
 
     /**
      * Create a new wired state with the specified step limit.
@@ -153,6 +167,176 @@ public final class WiredState {
         this.aborted = false;
         this.abortReason = null;
         this.startTimeMs = System.currentTimeMillis();
+    }
+
+    // =========== Context Variable Access ===========
+
+    /**
+     * Give a context variable a value for this execution.
+     * If {@code overrideExisting} is false and the variable was already given, the call is a no-op.
+     *
+     * @param name             variable name
+     * @param value            numeric value to assign
+     * @param overrideExisting if true, replaces any previously given value
+     */
+    public void giveContextValue(String name, long value, boolean overrideExisting) {
+        if (name == null || name.isEmpty()) return;
+
+        Set<String> given = scopedGiven();
+        if (!overrideExisting && given.contains(name)) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        contextCreatedAtMs.putIfAbsent(name, now);
+        contextUpdatedAtMs.put(name, now);
+        scopedValues().put(name, value);
+        given.add(name);
+    }
+
+    /**
+     * Directly set a context variable value (always overwrites).
+     *
+     * @param name  variable name
+     * @param value numeric value
+     */
+    public void setContextValue(String name, long value) {
+        if (name == null || name.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        contextCreatedAtMs.putIfAbsent(name, now);
+        contextUpdatedAtMs.put(name, now);
+        scopedValues().put(name, value);
+        scopedGiven().add(name);
+    }
+
+    /**
+     * Check whether a context variable has been given a value this execution.
+     *
+     * @param name variable name
+     * @return true if the variable was given via giveContextValue / setContextValue
+     */
+    public boolean hasContextValue(String name) {
+        if (name == null) return false;
+        return scopedGiven().contains(name) || (!this.contextScopeKey.isEmpty() && contextGiven.contains(name));
+    }
+
+    /**
+     * Get the numeric value of a context variable.
+     * Returns 0 if the variable was never given or tracks no value.
+     *
+     * @param name variable name
+     * @return the stored long value, or 0
+     */
+    public long getContextValue(String name) {
+        if (name == null) return 0L;
+        Map<String, Long> values = scopedValues();
+        if (values.containsKey(name)) {
+            return values.getOrDefault(name, 0L);
+        }
+
+        return this.contextScopeKey.isEmpty() ? 0L : contextValues.getOrDefault(name, 0L);
+    }
+
+    public long getContextCreatedAtMs(String name) {
+        if (name == null) return 0L;
+        return contextCreatedAtMs.getOrDefault(name, 0L);
+    }
+
+    public long getContextUpdatedAtMs(String name) {
+        if (name == null) return 0L;
+        return contextUpdatedAtMs.getOrDefault(name, 0L);
+    }
+
+    /**
+     * Remove a context variable from this execution, as if it was never given.
+     *
+     * @param name variable name
+     */
+    public void removeContextValue(String name) {
+        if (name == null) return;
+        scopedValues().remove(name);
+        contextCreatedAtMs.remove(name);
+        contextUpdatedAtMs.remove(name);
+        scopedGiven().remove(name);
+    }
+
+    public Map<String, Long> contextValuesSnapshot() {
+        Map<String, Long> snapshot = new HashMap<>();
+        if (!this.contextScopeKey.isEmpty()) {
+            snapshot.putAll(contextValues);
+        }
+        snapshot.putAll(scopedValues());
+        return snapshot;
+    }
+
+    public void importContextValues(Map<String, Long> values, boolean overrideExisting) {
+        if (values == null || values.isEmpty()) return;
+
+        Map<String, Long> targetValues = scopedValues();
+        Set<String> targetGiven = scopedGiven();
+        for (Map.Entry<String, Long> entry : values.entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isEmpty()) continue;
+            if (!overrideExisting && targetGiven.contains(entry.getKey())) continue;
+
+            long now = System.currentTimeMillis();
+            contextCreatedAtMs.putIfAbsent(entry.getKey(), now);
+            contextUpdatedAtMs.put(entry.getKey(), now);
+            targetValues.put(entry.getKey(), entry.getValue() == null ? 0L : entry.getValue());
+            targetGiven.add(entry.getKey());
+        }
+    }
+
+    public void setContextScope(String scopeKey) {
+        this.contextScopeKey = scopeKey == null ? "" : scopeKey;
+    }
+
+    public String contextScope() {
+        return this.contextScopeKey;
+    }
+
+    public Map<String, Map<String, Long>> scopedContextValuesSnapshot() {
+        Map<String, Map<String, Long>> snapshot = new HashMap<>();
+        snapshot.put("", new HashMap<>(contextValues));
+
+        for (Map.Entry<String, Map<String, Long>> entry : scopedContextValues.entrySet()) {
+            snapshot.put(entry.getKey(), new HashMap<>(entry.getValue()));
+        }
+
+        return snapshot;
+    }
+
+    public void importScopedContextValues(Map<String, Map<String, Long>> values, boolean overrideExisting) {
+        if (values == null || values.isEmpty()) return;
+
+        String previousScope = this.contextScopeKey;
+        for (Map.Entry<String, Map<String, Long>> entry : values.entrySet()) {
+            this.setContextScope(entry.getKey());
+            this.importContextValues(entry.getValue(), overrideExisting);
+        }
+        this.setContextScope(previousScope);
+    }
+
+    public WiredState fork() {
+        WiredState forked = new WiredState(this.maxSteps);
+        forked.setContextScope(this.contextScopeKey);
+        forked.importScopedContextValues(this.scopedContextValuesSnapshot(), true);
+        return forked;
+    }
+
+    private Map<String, Long> scopedValues() {
+        if (this.contextScopeKey.isEmpty()) {
+            return contextValues;
+        }
+
+        return scopedContextValues.computeIfAbsent(this.contextScopeKey, key -> new HashMap<>());
+    }
+
+    private Set<String> scopedGiven() {
+        if (this.contextScopeKey.isEmpty()) {
+            return contextGiven;
+        }
+
+        return scopedContextGiven.computeIfAbsent(this.contextScopeKey, key -> new HashSet<>());
     }
 
     @Override

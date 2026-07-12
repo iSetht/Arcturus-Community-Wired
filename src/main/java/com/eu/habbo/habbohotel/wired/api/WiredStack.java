@@ -1,5 +1,6 @@
 package com.eu.habbo.habbohotel.wired.api;
 
+import com.eu.habbo.habbohotel.items.interactions.InteractionWiredExtra;
 import com.eu.habbo.habbohotel.users.HabboItem;
 
 import java.util.Collections;
@@ -34,6 +35,7 @@ public final class WiredStack {
     private final IWiredTrigger trigger;
     private final List<IWiredCondition> conditions;
     private final List<IWiredEffect> effects;
+    private final List<InteractionWiredExtra> extras;
     
     // Extra modifiers
     private final boolean useOrMode;       // WiredExtraOrEval present
@@ -77,6 +79,25 @@ public final class WiredStack {
         this.trigger = trigger;
         this.conditions = conditions != null ? Collections.unmodifiableList(conditions) : Collections.emptyList();
         this.effects = effects != null ? Collections.unmodifiableList(effects) : Collections.emptyList();
+        this.extras = Collections.emptyList();
+        this.useOrMode = useOrMode;
+        this.useRandom = useRandom;
+        this.useUnseen = useUnseen;
+    }
+
+    public WiredStack(HabboItem triggerItem,
+                      IWiredTrigger trigger,
+                      List<IWiredCondition> conditions,
+                      List<IWiredEffect> effects,
+                      List<InteractionWiredExtra> extras,
+                      boolean useOrMode,
+                      boolean useRandom,
+                      boolean useUnseen) {
+        this.triggerItem = triggerItem;
+        this.trigger = trigger;
+        this.conditions = conditions != null ? Collections.unmodifiableList(conditions) : Collections.emptyList();
+        this.effects = effects != null ? Collections.unmodifiableList(effects) : Collections.emptyList();
+        this.extras = extras != null ? Collections.unmodifiableList(extras) : Collections.emptyList();
         this.useOrMode = useOrMode;
         this.useRandom = useRandom;
         this.useUnseen = useUnseen;
@@ -112,6 +133,19 @@ public final class WiredStack {
      */
     public List<IWiredEffect> effects() {
         return effects;
+    }
+
+    public List<InteractionWiredExtra> extras() {
+        return extras;
+    }
+
+    public <T extends InteractionWiredExtra> T extra(Class<T> type) {
+        for (InteractionWiredExtra extra : this.extras) {
+            if (type.isAssignableFrom(extra.getClass())) {
+                return type.cast(extra);
+            }
+        }
+        return null;
     }
 
     /**

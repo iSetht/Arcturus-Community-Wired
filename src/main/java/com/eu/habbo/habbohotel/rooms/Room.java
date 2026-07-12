@@ -6,10 +6,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -31,6 +34,9 @@ import com.eu.habbo.habbohotel.items.FurnitureType;
 import com.eu.habbo.habbohotel.items.Item;
 import com.eu.habbo.habbohotel.items.interactions.InteractionBackgroundToner;
 import com.eu.habbo.habbohotel.items.interactions.InteractionFireworks;
+import com.eu.habbo.habbohotel.items.interactions.InteractionAreaHide;
+import com.eu.habbo.habbohotel.items.interactions.InteractionHanditemBlock;
+import com.eu.habbo.habbohotel.items.interactions.InteractionWiredDisable;
 import com.eu.habbo.habbohotel.items.interactions.InteractionGuildFurni;
 import com.eu.habbo.habbohotel.items.interactions.InteractionJukeBox;
 import com.eu.habbo.habbohotel.items.interactions.InteractionMultiHeight;
@@ -41,14 +47,20 @@ import com.eu.habbo.habbohotel.pets.PetManager;
 import com.eu.habbo.habbohotel.users.DanceType;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
+import com.eu.habbo.habbohotel.wired.core.WiredMouseHoldManager;
 import com.eu.habbo.messages.ISerialize;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.outgoing.guilds.GuildInfoComposer;
 import com.eu.habbo.messages.outgoing.hotelview.HotelViewComposer;
 import com.eu.habbo.messages.outgoing.inventory.AddHabboItemComposer;
 import com.eu.habbo.messages.outgoing.inventory.InventoryRefreshComposer;
+import com.eu.habbo.messages.outgoing.rooms.AreaHideFloorHolesComposer;
 import com.eu.habbo.messages.outgoing.rooms.HideDoorbellComposer;
+import com.eu.habbo.messages.outgoing.rooms.RoomHeightMapComposer;
+import com.eu.habbo.messages.outgoing.rooms.RoomRelativeMapComposer;
 import com.eu.habbo.messages.outgoing.rooms.UpdateStackHeightComposer;
+import com.eu.habbo.messages.outgoing.rooms.items.AddFloorItemComposer;
+import com.eu.habbo.messages.outgoing.rooms.items.AddWallItemComposer;
 import com.eu.habbo.messages.outgoing.rooms.items.FloorItemUpdateComposer;
 import com.eu.habbo.messages.outgoing.rooms.items.ItemStateComposer;
 import com.eu.habbo.messages.outgoing.rooms.items.RemoveFloorItemComposer;
@@ -91,6 +103,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
   public static final Comparator<Room> SORT_SCORE = (o1, o2) -> o2.getScore() - o1.getScore();
   public static final Comparator<Room> SORT_ID = (o1, o2) -> o2.getId() - o1.getId();
+  private static final long AREA_HIDE_REFRESH_DELAY_MS = 50L;
   private static final TIntObjectHashMap<RoomMoodlightData> defaultMoodData = new TIntObjectHashMap<>();
   //Configuration. Loaded from database & updated accordingly.
   public static boolean HABBO_CHAT_DELAY = false;
@@ -105,6 +118,14 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   public static int ROLLERS_MAXIMUM_ROLL_AVATARS = 1;
   public static boolean MUTEAREA_CAN_WHISPER = false;
   public static double MAXIMUM_FURNI_HEIGHT = 40d;
+  public static final int WIRED_PERMISSION_RIGHTS = 1;
+  public static final int WIRED_PERMISSION_GROUP_MEMBERS = 2;
+  public static final int WIRED_PERMISSION_GROUP_ADMINS = 4;
+  public static final int WIRED_PERMISSION_EVERYONE = 8;
+  public static final int WIRED_TOOL_PREFERENCE_TOOLBAR = 1;
+  public static final int WIRED_TOOL_PREFERENCE_INSPECT_BUTTON = 2;
+  public static final int WIRED_TOOL_PREFERENCE_PLAYTESTING = 4;
+  public static final int WIRED_TOOL_PREFERENCE_DEFAULT = WIRED_TOOL_PREFERENCE_TOOLBAR | WIRED_TOOL_PREFERENCE_INSPECT_BUTTON;
 
   static {
     for (int i = 1; i <= 3; i++) {
@@ -128,6 +149,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   public volatile boolean preventUncaching = false;
   public Set<ServerMessage> scheduledComposers = ConcurrentHashMap.newKeySet();
   public Set<Runnable> scheduledTasks = ConcurrentHashMap.newKeySet();
+  public Set<Runnable> postCycleTasks = ConcurrentHashMap.newKeySet();
   public String wordQuiz = "";
   public int noVotes = 0;
   public int yesVotes = 0;
@@ -176,6 +198,16 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   private volatile boolean moveDiagonally;
   private volatile boolean jukeboxActive;
   private volatile boolean hideWired;
+  private volatile boolean hideInvisibleFurni;
+  private volatile String wiredTimezone;
+  private volatile int wiredModifyPermissions;
+  private volatile int wiredInspectPermissions;
+  private volatile int wiredCreatorToolsPreferences;
+
+  public static final Set<String> INVISIBLE_ITEM_NAMES = new HashSet<>(Arrays.asList(
+      "room_invisible_click_tile"
+  ));
+
   private RoomPromotion promotion;
   private volatile boolean needsUpdate;
   private volatile boolean loaded;
@@ -187,11 +219,18 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   private volatile boolean muted;
   private RoomSpecialTypes roomSpecialTypes;
   private TraxManager traxManager;
-  
+  private final TIntObjectHashMap<FurniLoadSnapshot> furniLoadSnapshot;
+  private final Object areaHideRefreshLock = new Object();
+  private ScheduledFuture<?> areaHideRefreshTask;
+  private String areaHideRefreshSignature;
+  private final Set<Integer> areaHideHiddenFloorItemIds = ConcurrentHashMap.newKeySet();
+  private final Set<Integer> areaHideHiddenWallItemIds = ConcurrentHashMap.newKeySet();
+
   public final THashMap<String, Object> cache;
 
   public Room(ResultSet set) throws SQLException {
     this.cache = new THashMap<>(1000);
+    this.furniLoadSnapshot = new TIntObjectHashMap<>();
     this.id = set.getInt("id");
     this.ownerId = set.getInt("owner_id");
     this.ownerName = set.getString("owner_name");
@@ -231,6 +270,11 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     this.promoted = set.getString("promoted").equals("1");
     this.jukeboxActive = set.getString("jukebox_active").equals("1");
     this.hideWired = set.getString("hidewired").equals("1");
+    this.hideInvisibleFurni = set.getString("hide_invisible_furni").equals("1");
+    this.wiredTimezone = normalizeWiredTimezone(set.getString("wired_timezone"));
+    this.wiredModifyPermissions = normalizeWiredModifyPermissions(set.getInt("wired_modify_permissions"));
+    this.wiredInspectPermissions = normalizeWiredInspectPermissions(set.getInt("wired_inspect_permissions"));
+    this.wiredCreatorToolsPreferences = normalizeWiredCreatorToolsPreferences(set.getInt("wired_creator_tools_preferences"));
 
     this.bannedHabbos = new TIntObjectHashMap<>();
 
@@ -529,6 +573,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
       // Wait for items to be loaded before loading wired data (wired depends on items)
       try {
         itemsFuture.join();
+        this.captureFurniLoadSnapshot();
       } catch (Exception e) {
         LOGGER.error("Error waiting for items to load", e);
       }
@@ -601,10 +646,13 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     
     // Set loaded flag with lock
     synchronized (this.loadLock) {
+      this.lastTimerReset = Emulator.getIntUnixTimestamp();
       this.loaded = true;
       this.loadingInProgress = false;
       this.loadingFuture = null;
     }
+
+    this.snapshotAreaHideState();
 
     Emulator.getPluginManager().fireEvent(new RoomLoadedEvent(this));
   }
@@ -637,6 +685,79 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
   private synchronized void loadItems(Connection connection) {
     this.itemManager.loadItems(connection);
+  }
+
+  private synchronized void captureFurniLoadSnapshot() {
+    this.furniLoadSnapshot.clear();
+
+    for (HabboItem item : this.getFloorItems()) {
+      this.furniLoadSnapshot.put(item.getId(), new FurniLoadSnapshot(item));
+    }
+
+    for (HabboItem item : this.getWallItems()) {
+      this.furniLoadSnapshot.put(item.getId(), new FurniLoadSnapshot(item));
+    }
+  }
+
+  public synchronized int rollbackFurniLoadSnapshot() {
+    if (this.furniLoadSnapshot.isEmpty() || this.layout == null) {
+      return 0;
+    }
+
+    int restored = 0;
+
+    for (FurniLoadSnapshot snapshot : this.furniLoadSnapshot.valueCollection()) {
+      HabboItem item = this.getHabboItem(snapshot.itemId);
+
+      if (item == null || item.getRoomId() != this.id) {
+        continue;
+      }
+
+      THashSet<RoomTile> oldTiles = new THashSet<>();
+      boolean stateChanged = !String.valueOf(item.getExtradata()).equals(String.valueOf(snapshot.extradata));
+
+      if (item.getBaseItem().getType() == FurnitureType.FLOOR) {
+        RoomTile oldTile = this.layout.getTile(item.getX(), item.getY());
+
+        if (oldTile != null) {
+          oldTiles.addAll(this.layout.getTilesAt(oldTile, item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation()));
+        }
+      }
+
+      boolean changed = snapshot.applyTo(item);
+
+      if (!changed) {
+        continue;
+      }
+
+      this.itemManager.reindexFloorItem(item, oldTiles);
+      item.needsUpdate(true);
+      this.updateItem(item);
+
+      if (stateChanged) {
+        this.updateItemState(item);
+      }
+
+      if (item.getBaseItem().getType() == FurnitureType.FLOOR) {
+        THashSet<RoomTile> updatedTiles = new THashSet<>(oldTiles);
+        RoomTile newTile = this.layout.getTile(item.getX(), item.getY());
+
+        if (newTile != null) {
+          updatedTiles.addAll(this.layout.getTilesAt(newTile, item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation()));
+        }
+
+        this.updateTiles(updatedTiles);
+
+        for (RoomTile tile : updatedTiles) {
+          this.updateHabbosAt(tile.x, tile.y);
+          this.updateBotsAt(tile.x, tile.y);
+        }
+      }
+
+      restored++;
+    }
+
+    return restored;
   }
 
   private synchronized void loadWiredData(Connection connection) {
@@ -760,6 +881,11 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
       if (furniturePickedUpEvent.isCancelled()) {
         return;
       }
+    }
+
+    if (item.getId() < 0) {
+      this.removeTemporaryFloorFurni(item);
+      return;
     }
 
     this.removeHabboItem(item.getId());
@@ -902,6 +1028,17 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
             this.roomCycleTask.cancel(false);
             this.roomCycleTask = null;
           }
+
+          synchronized (this.areaHideRefreshLock) {
+            if (this.areaHideRefreshTask != null) {
+              this.areaHideRefreshTask.cancel(false);
+              this.areaHideRefreshTask = null;
+            }
+            this.areaHideRefreshSignature = "";
+          }
+          this.areaHideHiddenFloorItemIds.clear();
+          this.areaHideHiddenWallItemIds.clear();
+
           this.scheduledTasks.clear();
           this.scheduledComposers.clear();
 
@@ -1096,7 +1233,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     if (this.needsUpdate) {
       try (Connection connection = Emulator.getDatabase().getDataSource()
           .getConnection(); PreparedStatement statement = connection.prepareStatement(
-          "UPDATE rooms SET name = ?, description = ?, password = ?, state = ?, users_max = ?, category = ?, score = ?, paper_floor = ?, paper_wall = ?, paper_landscape = ?, thickness_wall = ?, wall_height = ?, thickness_floor = ?, moodlight_data = ?, tags = ?, allow_other_pets = ?, allow_other_pets_eat = ?, allow_walkthrough = ?, allow_hidewall = ?, chat_mode = ?, chat_weight = ?, chat_speed = ?, chat_hearing_distance = ?, chat_protection =?, who_can_mute = ?, who_can_kick = ?, who_can_ban = ?, poll_id = ?, guild_id = ?, roller_speed = ?, override_model = ?, is_staff_picked = ?, promoted = ?, trade_mode = ?, move_diagonally = ?, owner_id = ?, owner_name = ?, jukebox_active = ?, hidewired = ? WHERE id = ?")) {
+          "UPDATE rooms SET name = ?, description = ?, password = ?, state = ?, users_max = ?, category = ?, score = ?, paper_floor = ?, paper_wall = ?, paper_landscape = ?, thickness_wall = ?, wall_height = ?, thickness_floor = ?, moodlight_data = ?, tags = ?, allow_other_pets = ?, allow_other_pets_eat = ?, allow_walkthrough = ?, allow_hidewall = ?, chat_mode = ?, chat_weight = ?, chat_speed = ?, chat_hearing_distance = ?, chat_protection =?, who_can_mute = ?, who_can_kick = ?, who_can_ban = ?, poll_id = ?, guild_id = ?, roller_speed = ?, override_model = ?, is_staff_picked = ?, promoted = ?, trade_mode = ?, move_diagonally = ?, owner_id = ?, owner_name = ?, jukebox_active = ?, hidewired = ?, hide_invisible_furni = ?, wired_timezone = ?, wired_modify_permissions = ?, wired_inspect_permissions = ?, wired_creator_tools_preferences = ? WHERE id = ?")) {
         statement.setString(1, this.name);
         statement.setString(2, this.description);
         statement.setString(3, this.password);
@@ -1145,7 +1282,12 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
         statement.setString(37, this.ownerName);
         statement.setString(38, this.jukeboxActive ? "1" : "0");
         statement.setString(39, this.hideWired ? "1" : "0");
-        statement.setInt(40, this.id);
+        statement.setString(40, this.hideInvisibleFurni ? "1" : "0");
+        statement.setString(41, this.getWiredTimezone());
+        statement.setInt(42, this.getWiredModifyPermissions());
+        statement.setInt(43, this.getWiredInspectPermissions());
+        statement.setInt(44, this.getWiredCreatorToolsPreferences());
+        statement.setInt(45, this.id);
         statement.executeUpdate();
         this.needsUpdate = false;
       } catch (SQLException e) {
@@ -1581,6 +1723,10 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     return this.cycleManager.getCycleTimestamp();
   }
 
+  public long getCycleId() {
+    return this.cycleManager.getCycleId();
+  }
+
   public boolean isPromoted() {
     return this.promotionManager.isPromoted();
   }
@@ -1661,6 +1807,182 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     this.lastTimerReset = lastTimerReset;
   }
 
+  public String getWiredTimezone() {
+    return normalizeWiredTimezone(this.wiredTimezone);
+  }
+
+  public void setWiredTimezone(String wiredTimezone) {
+    String normalizedTimezone = normalizeWiredTimezone(wiredTimezone);
+
+    if (normalizedTimezone.equals(this.getWiredTimezone())) {
+      return;
+    }
+
+    this.wiredTimezone = normalizedTimezone;
+    this.needsUpdate = true;
+  }
+
+  public int getWiredModifyPermissions() {
+    return normalizeWiredModifyPermissions(this.wiredModifyPermissions);
+  }
+
+  public void setWiredModifyPermissions(int wiredModifyPermissions) {
+    int normalizedPermissions = normalizeWiredModifyPermissions(wiredModifyPermissions);
+
+    if (normalizedPermissions == this.getWiredModifyPermissions()) {
+      return;
+    }
+
+    this.wiredModifyPermissions = normalizedPermissions;
+    this.needsUpdate = true;
+  }
+
+  public int getWiredInspectPermissions() {
+    return normalizeWiredInspectPermissions(this.wiredInspectPermissions);
+  }
+
+  public void setWiredInspectPermissions(int wiredInspectPermissions) {
+    int normalizedPermissions = normalizeWiredInspectPermissions(wiredInspectPermissions);
+
+    if (normalizedPermissions == this.getWiredInspectPermissions()) {
+      return;
+    }
+
+    this.wiredInspectPermissions = normalizedPermissions;
+    this.needsUpdate = true;
+  }
+
+  public boolean canModifyWired(Habbo habbo) {
+    return this.hasWiredPermission(habbo, this.getWiredModifyPermissions());
+  }
+
+  public boolean canInspectWired(Habbo habbo) {
+    return this.canModifyWired(habbo) || this.hasWiredPermission(habbo, this.getWiredInspectPermissions());
+  }
+
+  public boolean canUseWiredCreatorTools(Habbo habbo) {
+    if (habbo == null) {
+      return false;
+    }
+
+    return this.rightsManager.isOwner(habbo) || this.rightsManager.hasRights(habbo) || (this.guild > 0 && habbo.getHabboStats().hasGuild(this.guild) && this.isGuildAdmin(habbo));
+  }
+
+  public boolean isWiredCreatorToolsToolbar() {
+    return (this.getWiredCreatorToolsPreferences() & WIRED_TOOL_PREFERENCE_TOOLBAR) == WIRED_TOOL_PREFERENCE_TOOLBAR;
+  }
+
+  public void setWiredCreatorToolsToolbar(boolean wiredCreatorToolsToolbar) {
+    this.setWiredCreatorToolsPreference(WIRED_TOOL_PREFERENCE_TOOLBAR, wiredCreatorToolsToolbar);
+  }
+
+  public boolean isWiredCreatorToolsInspectButton() {
+    return (this.getWiredCreatorToolsPreferences() & WIRED_TOOL_PREFERENCE_INSPECT_BUTTON) == WIRED_TOOL_PREFERENCE_INSPECT_BUTTON;
+  }
+
+  public void setWiredCreatorToolsInspectButton(boolean wiredCreatorToolsInspectButton) {
+    this.setWiredCreatorToolsPreference(WIRED_TOOL_PREFERENCE_INSPECT_BUTTON, wiredCreatorToolsInspectButton);
+  }
+
+  public boolean isWiredCreatorToolsPlaytesting() {
+    return (this.getWiredCreatorToolsPreferences() & WIRED_TOOL_PREFERENCE_PLAYTESTING) == WIRED_TOOL_PREFERENCE_PLAYTESTING;
+  }
+
+  public void setWiredCreatorToolsPlaytesting(boolean wiredCreatorToolsPlaytesting) {
+    if (this.isWiredCreatorToolsPlaytesting() == wiredCreatorToolsPlaytesting) {
+      return;
+    }
+
+    this.setWiredCreatorToolsPreference(WIRED_TOOL_PREFERENCE_PLAYTESTING, wiredCreatorToolsPlaytesting);
+    this.refreshRightsInRoom();
+  }
+
+  public int getWiredCreatorToolsPreferences() {
+    return normalizeWiredCreatorToolsPreferences(this.wiredCreatorToolsPreferences);
+  }
+
+  private void setWiredCreatorToolsPreference(int preference, boolean enabled) {
+    int preferences = this.getWiredCreatorToolsPreferences();
+    int nextPreferences = enabled ? (preferences | preference) : (preferences & ~preference);
+
+    if (preferences == nextPreferences) {
+      return;
+    }
+
+    this.wiredCreatorToolsPreferences = normalizeWiredCreatorToolsPreferences(nextPreferences);
+    this.needsUpdate = true;
+  }
+
+  private boolean hasWiredPermission(Habbo habbo, int permissions) {
+    if (habbo == null) {
+      return false;
+    }
+
+    if (this.isOwner(habbo)) {
+      return true;
+    }
+
+    if ((permissions & WIRED_PERMISSION_EVERYONE) == WIRED_PERMISSION_EVERYONE) {
+      return true;
+    }
+
+    if ((permissions & WIRED_PERMISSION_RIGHTS) == WIRED_PERMISSION_RIGHTS && this.hasRights(habbo)) {
+      return true;
+    }
+
+    if (this.guild <= 0 || !habbo.getHabboStats().hasGuild(this.guild)) {
+      return false;
+    }
+
+    if ((permissions & WIRED_PERMISSION_GROUP_ADMINS) == WIRED_PERMISSION_GROUP_ADMINS && this.isGuildAdmin(habbo)) {
+      return true;
+    }
+
+    return (permissions & WIRED_PERMISSION_GROUP_MEMBERS) == WIRED_PERMISSION_GROUP_MEMBERS;
+  }
+
+  private boolean isGuildAdmin(Habbo habbo) {
+    Guild guild = Emulator.getGameEnvironment().getGuildManager().getGuild(this.guild);
+
+    return guild != null && Emulator.getGameEnvironment().getGuildManager().getOnlyAdmins(guild).containsKey(habbo.getHabboInfo().getId());
+  }
+
+  private static String normalizeWiredTimezone(String wiredTimezone) {
+    if (wiredTimezone == null || wiredTimezone.trim().isEmpty()) {
+      return "Europe/London";
+    }
+
+    return wiredTimezone.trim();
+  }
+
+  private static int normalizeWiredModifyPermissions(int permissions) {
+    int normalized = permissions & (WIRED_PERMISSION_RIGHTS | WIRED_PERMISSION_GROUP_MEMBERS | WIRED_PERMISSION_GROUP_ADMINS);
+
+    if ((normalized & WIRED_PERMISSION_GROUP_MEMBERS) == WIRED_PERMISSION_GROUP_MEMBERS) {
+      normalized |= WIRED_PERMISSION_GROUP_ADMINS;
+    }
+
+    return normalized;
+  }
+
+  private static int normalizeWiredInspectPermissions(int permissions) {
+    int normalized = permissions & (WIRED_PERMISSION_RIGHTS | WIRED_PERMISSION_GROUP_MEMBERS | WIRED_PERMISSION_GROUP_ADMINS | WIRED_PERMISSION_EVERYONE);
+
+    if ((normalized & WIRED_PERMISSION_EVERYONE) == WIRED_PERMISSION_EVERYONE) {
+      normalized |= WIRED_PERMISSION_RIGHTS | WIRED_PERMISSION_GROUP_MEMBERS | WIRED_PERMISSION_GROUP_ADMINS;
+    }
+
+    if ((normalized & WIRED_PERMISSION_GROUP_MEMBERS) == WIRED_PERMISSION_GROUP_MEMBERS) {
+      normalized |= WIRED_PERMISSION_GROUP_ADMINS;
+    }
+
+    return normalized;
+  }
+
+  private static int normalizeWiredCreatorToolsPreferences(int preferences) {
+    return preferences & (WIRED_TOOL_PREFERENCE_TOOLBAR | WIRED_TOOL_PREFERENCE_INSPECT_BUTTON | WIRED_TOOL_PREFERENCE_PLAYTESTING);
+  }
+
   public void addToQueue(Habbo habbo) {
     this.unitManager.addToQueue(habbo);
   }
@@ -1732,6 +2054,30 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     this.itemManager.addHabboItem(item);
   }
 
+  public FurnitureMovementError placeTemporaryFloorFurniAt(HabboItem item, RoomTile tile, int rotation, double z,
+      String ownerName) {
+    return this.itemManager.placeTemporaryFloorFurniAt(item, tile, rotation, z, ownerName);
+  }
+
+  public FurnitureMovementError placeTemporaryFloorFurniAt(HabboItem item, RoomTile tile, int rotation, double z,
+      String ownerName, boolean checkForUnits) {
+    return this.itemManager.placeTemporaryFloorFurniAt(item, tile, rotation, z, ownerName, checkForUnits);
+  }
+
+  public FurnitureMovementError placeTemporaryFloorFurniAt(HabboItem item, RoomTile tile, int rotation, double z,
+      String ownerName, boolean checkForUnits, boolean ignoreFurniStacking) {
+    return this.itemManager.placeTemporaryFloorFurniAt(item, tile, rotation, z, ownerName, checkForUnits, ignoreFurniStacking);
+  }
+
+  public FurnitureMovementError placeTemporaryFloorFurniAt(HabboItem item, RoomTile tile, int rotation, double z,
+      String ownerName, boolean checkForUnits, boolean ignoreFurniStacking, boolean snapshotExact) {
+    return this.itemManager.placeTemporaryFloorFurniAt(item, tile, rotation, z, ownerName, checkForUnits, ignoreFurniStacking, snapshotExact);
+  }
+
+  public void removeTemporaryFloorFurni(HabboItem item) {
+    this.itemManager.removeTemporaryFloorFurni(item);
+  }
+
   public HabboItem getHabboItem(int id) {
     return this.itemManager.getHabboItem(id);
   }
@@ -1766,11 +2112,30 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   }
 
   public void removeHabbo(Habbo habbo) {
+    this.clearRoomActiveUserVariables(habbo);
     this.unitManager.removeHabbo(habbo);
   }
 
   public void removeHabbo(Habbo habbo, boolean sendRemovePacket) {
+    this.clearRoomActiveUserVariables(habbo);
     this.unitManager.removeHabbo(habbo, sendRemovePacket);
+  }
+
+  private void clearRoomActiveUserVariables(Habbo habbo) {
+    if (habbo == null || habbo.getHabboInfo() == null) {
+      return;
+    }
+
+    int userId = habbo.getHabboInfo().getId();
+    WiredMouseHoldManager.unsubscribeInspection(this, habbo);
+    WiredMouseHoldManager.clear(this, userId);
+    if (this.roomSpecialTypes == null) {
+      return;
+    }
+    for (com.eu.habbo.habbohotel.items.interactions.InteractionWiredVariable variable :
+        this.roomSpecialTypes.getVariables(com.eu.habbo.habbohotel.wired.WiredVariableType.USER)) {
+      variable.removeRoomActiveValue(userId);
+    }
   }
 
   public void addBot(Bot bot) {
@@ -2028,6 +2393,14 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     this.messagingManager.sendComposer(message);
   }
 
+  public void beginComposerBatch() {
+    this.messagingManager.beginComposerBatch();
+  }
+
+  public void endComposerBatch() {
+    this.messagingManager.endComposerBatch();
+  }
+
   public void sendComposerToHabbosWithRights(ServerMessage message) {
     this.messagingManager.sendComposerToHabbosWithRights(message);
   }
@@ -2102,10 +2475,18 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   }
 
   public boolean isOwner(Habbo habbo) {
+    if (this.isWiredCreatorToolsPlaytesting()) {
+      return false;
+    }
+
     return this.rightsManager.isOwner(habbo);
   }
 
   public boolean hasRights(Habbo habbo) {
+    if (this.isWiredCreatorToolsPlaytesting()) {
+      return false;
+    }
+
     return this.rightsManager.hasRights(habbo);
   }
 
@@ -2204,10 +2585,47 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     this.unitManager.giveHandItem(roomUnit, handItem);
   }
 
+  public boolean isWiredExecutionDisabled() {
+    if (this.roomSpecialTypes == null) {
+      return false;
+    }
+
+    for (HabboItem item : this.roomSpecialTypes.getItemsOfType(InteractionWiredDisable.class)) {
+      if (item instanceof InteractionWiredDisable && ((InteractionWiredDisable) item).isEnabled()) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  public boolean isHanditemPassingBlocked() {
+    if (this.roomSpecialTypes == null) {
+      return false;
+    }
+
+    for (HabboItem item : this.roomSpecialTypes.getItemsOfType(InteractionHanditemBlock.class)) {
+      if (item instanceof InteractionHanditemBlock && ((InteractionHanditemBlock) item).isEnabled()) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   public void updateItem(HabboItem item) {
     if (this.isLoaded()) {
       if (item != null && item.getRoomId() == this.id) {
         if (item.getBaseItem() != null) {
+          if (this.isItemHiddenByAreaHide(item)) {
+            if (item.getBaseItem().getType() == FurnitureType.FLOOR) {
+              this.sendComposer(new RemoveFloorItemComposer(item).compose());
+            } else if (item.getBaseItem().getType() == FurnitureType.WALL) {
+              this.sendComposer(new RemoveWallItemComposer(item).compose());
+            }
+            return;
+          }
+
           if (item.getBaseItem().getType() == FurnitureType.FLOOR) {
             this.sendComposer(new FloorItemUpdateComposer(item).compose());
             this.updateTiles(this.getLayout()
@@ -2223,13 +2641,30 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   }
 
   public void updateItemState(HabboItem item) {
+    this.updateItemState(item, true);
+  }
+
+  /**
+   * Broadcasts an item's state and optionally recalculates its footprint. Wired mutation
+   * batches use {@code updateTiles=false} after a combined move already performed that work.
+   */
+  public void updateItemState(HabboItem item, boolean updateTiles) {
+    if (this.isItemHiddenByAreaHide(item)) {
+      if (item.getBaseItem().getType() == FurnitureType.FLOOR) {
+        this.sendComposer(new RemoveFloorItemComposer(item).compose());
+      } else if (item.getBaseItem().getType() == FurnitureType.WALL) {
+        this.sendComposer(new RemoveWallItemComposer(item).compose());
+      }
+      return;
+    }
+
     if (!item.isLimited()) {
       this.sendComposer(new ItemStateComposer(item).compose());
     } else {
       this.sendComposer(new FloorItemUpdateComposer(item).compose());
     }
 
-    if (item.getBaseItem().getType() == FurnitureType.FLOOR) {
+    if (updateTiles && item.getBaseItem().getType() == FurnitureType.FLOOR) {
       if (this.layout == null) {
         return;
       }
@@ -2238,9 +2673,10 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
           .getTilesAt(this.layout.getTile(item.getX(), item.getY()), item.getBaseItem().getWidth(),
               item.getBaseItem().getLength(), item.getRotation()));
 
-      if (item instanceof InteractionMultiHeight) {
-        ((InteractionMultiHeight) item).updateUnitsOnItem(this);
-      }
+    }
+
+    if (item instanceof InteractionMultiHeight) {
+      ((InteractionMultiHeight) item).updateUnitsOnItem(this);
     }
   }
 
@@ -2415,6 +2851,288 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     }
   }
 
+  public boolean isHideInvisibleFurni() {
+    return this.hideInvisibleFurni;
+  }
+
+  private boolean isHiddenByInvisibleControl(HabboItem item) {
+    return this.hideInvisibleFurni && this.isInvisibleControlItem(item);
+  }
+
+  private boolean isInvisibleControlItem(HabboItem item) {
+    if (item == null || item.getBaseItem() == null) {
+      return false;
+    }
+
+    return INVISIBLE_ITEM_NAMES.contains(item.getBaseItem().getName()) ||
+        item instanceof InteractionAreaHide && ((InteractionAreaHide) item).isEnabled() && ((InteractionAreaHide) item).isInvisibleFurni();
+  }
+
+  public void setHideInvisibleFurni(boolean hideInvisibleFurni){
+
+    this.hideInvisibleFurni = hideInvisibleFurni;
+    THashSet<HabboItem> matched = new THashSet<>();
+    for (HabboItem item : this.getFloorItems()){
+      if (this.isInvisibleControlItem(item)) {
+        matched.add(item);
+      }
+    }
+
+    if (this.hideInvisibleFurni) {
+      for (HabboItem item : matched) {
+        this.sendComposer(new RemoveFloorItemComposer(item).compose());
+      }
+
+    } else {
+      this.sendComposer(new RoomFloorItemsComposer(this.itemManager.getFurniOwnerNames(),
+          matched).compose());
+    }
+
+  }
+
+  private boolean isRoomTileHiddenByAreaHide(int x, int y) {
+    if (this.roomSpecialTypes == null) return false;
+    for (HabboItem item : this.roomSpecialTypes.getItemsOfType(InteractionAreaHide.class)) {
+      if (item instanceof InteractionAreaHide && ((InteractionAreaHide) item).hidesRoomTile(x, y)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * When AreaHide invert mode floor-holes the door tile users would normally spawn there
+   * and appear at ~80 altitude in the client. This walks inward along the door direction
+   * until it finds the first visible tile (inside the selection zone), which is then used
+   * as the spawn point instead. Returns null when the door tile is not hidden or no safe
+   * tile could be found (caller should fall back to the real door tile).
+   */
+  public RoomTile getAreaHideSafeSpawnTile() {
+    RoomLayout layout = this.getLayout();
+    if (layout == null) return null;
+
+    int doorX = layout.getDoorX();
+    int doorY = layout.getDoorY();
+
+    if (!this.isRoomTileHiddenByAreaHide(doorX, doorY)) return null;
+
+    // BFS outward from the door tile to find the nearest visible (non-hidden, non-void)
+    // floor tile. A simple directional walk fails when the door tile is a single
+    // protruding tile surrounded by void — the door direction immediately hits void and
+    // returns nothing. BFS explores all reachable floor tiles so it always finds the
+    // closest tile inside the selection zone regardless of room shape.
+    int mapW = layout.getMapSizeX();
+    int mapH = layout.getMapSizeY();
+    boolean[][] visited = new boolean[mapW][mapH];
+    ArrayDeque<int[]> queue = new ArrayDeque<>();
+
+    visited[doorX][doorY] = true;
+    queue.add(new int[]{ doorX, doorY });
+
+    final int[] dx = { 0, 1, 0, -1 };
+    final int[] dy = { -1, 0, 1, 0 };
+
+    while (!queue.isEmpty()) {
+      int[] pos = queue.poll();
+      int x = pos[0];
+      int y = pos[1];
+
+      for (int d = 0; d < 4; d++) {
+        int nx = x + dx[d];
+        int ny = y + dy[d];
+
+        if (nx < 0 || ny < 0 || nx >= mapW || ny >= mapH) continue;
+        if (visited[nx][ny]) continue;
+        visited[nx][ny] = true;
+        if (layout.isVoidTile((short) nx, (short) ny)) continue;
+
+        if (!this.isRoomTileHiddenByAreaHide(nx, ny)) {
+          return layout.getTile((short) nx, (short) ny);
+        }
+
+        queue.add(new int[]{ nx, ny });
+      }
+    }
+
+    return null;
+  }
+
+  public boolean isItemHiddenByAreaHide(HabboItem item) {
+    if (item == null || this.roomSpecialTypes == null) {
+      return false;
+    }
+
+    for (HabboItem areaHide : this.roomSpecialTypes.getItemsOfType(InteractionAreaHide.class)) {
+      if (!(areaHide instanceof InteractionAreaHide)) {
+        continue;
+      }
+
+      InteractionAreaHide hider = (InteractionAreaHide) areaHide;
+      if (hider.shouldHideSelf(this) && item == hider) {
+        return true;
+      }
+      if (hider.hidesFloorItem(this, item) || hider.hidesWallItem(this, item)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  public void scheduleAreaHideStateRefresh() {
+    if (!this.isLoaded()) {
+      return;
+    }
+
+    synchronized (this.areaHideRefreshLock) {
+      if (this.areaHideRefreshTask != null && !this.areaHideRefreshTask.isDone()) {
+        this.areaHideRefreshTask.cancel(false);
+      }
+
+      this.areaHideRefreshTask = Emulator.getThreading().run(() -> {
+        synchronized (this.areaHideRefreshLock) {
+          this.areaHideRefreshTask = null;
+        }
+
+        this.refreshAreaHideStateIfChanged();
+      }, AREA_HIDE_REFRESH_DELAY_MS);
+    }
+  }
+
+  private void refreshAreaHideStateIfChanged() {
+    String signature = this.getAreaHideStateSignature();
+
+    synchronized (this.areaHideRefreshLock) {
+      if (signature.equals(this.areaHideRefreshSignature)) {
+        return;
+      }
+
+      this.areaHideRefreshSignature = signature;
+    }
+
+    this.beginComposerBatch();
+    try {
+      this.refreshAreaHideState();
+      this.sendComposer(new AreaHideFloorHolesComposer(this).compose());
+      this.sendComposer(new RoomRelativeMapComposer(this).compose());
+      this.sendComposer(new RoomHeightMapComposer(this).compose());
+    } finally {
+      this.endComposerBatch();
+    }
+  }
+
+  private String getAreaHideStateSignature() {
+    if (this.roomSpecialTypes == null) {
+      return "";
+    }
+
+    THashSet<HabboItem> areaHiders = this.roomSpecialTypes.getItemsOfType(InteractionAreaHide.class);
+    if (areaHiders == null || areaHiders.isEmpty()) {
+      return "";
+    }
+
+    List<String> parts = new ArrayList<>();
+    for (HabboItem areaHide : areaHiders) {
+      if (!(areaHide instanceof InteractionAreaHide)) {
+        continue;
+      }
+
+      InteractionAreaHide hider = (InteractionAreaHide) areaHide;
+      boolean hidesTiles = hider.isEnabled() && hider.hasSelection();
+      boolean hidesSelf = hider.shouldHideSelf(this);
+      if (!hidesTiles && !hidesSelf) {
+        continue;
+      }
+
+      parts.add(hider.getId() + ":" +
+          hidesTiles + ":" +
+          hidesSelf + ":" +
+          (hidesTiles ? hider.getStartX() : 0) + ":" +
+          (hidesTiles ? hider.getStartY() : 0) + ":" +
+          (hidesTiles ? hider.getEndX() : 0) + ":" +
+          (hidesTiles ? hider.getEndY() : 0) + ":" +
+          (hidesTiles && hider.isHideWallItems()) + ":" +
+          (hidesTiles && hider.isInverted()));
+    }
+
+    Collections.sort(parts);
+    return String.join("|", parts);
+  }
+
+  private void snapshotAreaHideState() {
+    synchronized (this.areaHideRefreshLock) {
+      this.areaHideRefreshSignature = this.getAreaHideStateSignature();
+    }
+
+    this.areaHideHiddenFloorItemIds.clear();
+    for (HabboItem item : this.getFloorItems()) {
+      if (this.isItemHiddenByAreaHide(item)) {
+        this.areaHideHiddenFloorItemIds.add(item.getId());
+      }
+    }
+
+    this.areaHideHiddenWallItemIds.clear();
+    for (HabboItem item : this.getWallItems()) {
+      if (this.isItemHiddenByAreaHide(item)) {
+        this.areaHideHiddenWallItemIds.add(item.getId());
+      }
+    }
+  }
+
+  public void refreshAreaHideState() {
+    if (!this.isLoaded()) {
+      return;
+    }
+
+    TIntObjectMap<String> ownerNames = this.getFurniOwnerNames();
+
+    // Floor items — diff-based: only send Remove for newly hidden, Add for newly visible
+    Set<Integer> nowHiddenFloor = new HashSet<>();
+    for (HabboItem item : this.getFloorItems()) {
+      if (this.isItemHiddenByAreaHide(item)) {
+        nowHiddenFloor.add(item.getId());
+      }
+    }
+
+    for (HabboItem item : this.getFloorItems()) {
+      int id = item.getId();
+      boolean wasHidden = this.areaHideHiddenFloorItemIds.contains(id);
+      boolean isHidden  = nowHiddenFloor.contains(id);
+
+      if (!wasHidden && isHidden) {
+        this.sendComposer(new RemoveFloorItemComposer(item).compose());
+      } else if (wasHidden && !isHidden) {
+        String ownerName = ownerNames.get(item.getUserId());
+        this.sendComposer(new AddFloorItemComposer(item, ownerName != null ? ownerName : "").compose());
+      }
+    }
+    this.areaHideHiddenFloorItemIds.clear();
+    this.areaHideHiddenFloorItemIds.addAll(nowHiddenFloor);
+
+    // Wall items — diff-based: only send Remove for newly hidden, Add for newly visible
+    Set<Integer> nowHiddenWall = new HashSet<>();
+    for (HabboItem item : this.getWallItems()) {
+      if (this.isItemHiddenByAreaHide(item)) {
+        nowHiddenWall.add(item.getId());
+      }
+    }
+
+    for (HabboItem item : this.getWallItems()) {
+      int id = item.getId();
+      boolean wasHidden = this.areaHideHiddenWallItemIds.contains(id);
+      boolean isHidden  = nowHiddenWall.contains(id);
+
+      if (!wasHidden && isHidden) {
+        this.sendComposer(new RemoveWallItemComposer(item).compose());
+      } else if (wasHidden && !isHidden) {
+        String ownerName = ownerNames.get(item.getUserId());
+        this.sendComposer(new AddWallItemComposer(item, ownerName != null ? ownerName : "").compose());
+      }
+    }
+    this.areaHideHiddenWallItemIds.clear();
+    this.areaHideHiddenWallItemIds.addAll(nowHiddenWall);
+  }
+
   public FurnitureMovementError canPlaceFurnitureAt(HabboItem item, Habbo habbo, RoomTile tile,
       int rotation) {
     return this.itemManager.canPlaceFurnitureAt(item, habbo, tile, rotation);
@@ -2427,6 +3145,11 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   public FurnitureMovementError furnitureFitsAt(RoomTile tile, HabboItem item, int rotation,
       boolean checkForUnits) {
     return this.itemManager.furnitureFitsAt(tile, item, rotation, checkForUnits);
+  }
+
+  public FurnitureMovementError furnitureFitsAt(RoomTile tile, HabboItem item, int rotation,
+      boolean checkForUnits, boolean ignoreFurniStacking) {
+    return this.itemManager.furnitureFitsAt(tile, item, rotation, checkForUnits, ignoreFurniStacking);
   }
 
   public FurnitureMovementError placeFloorFurniAt(HabboItem item, RoomTile tile, int rotation,
@@ -2453,6 +3176,31 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
     return this.itemManager.moveFurniTo(item, tile, rotation, actor, sendUpdates, checkForUnits);
   }
 
+  public FurnitureMovementError moveFurniTo(HabboItem item, RoomTile tile, int rotation,
+      Habbo actor, boolean sendUpdates, boolean checkForUnits, boolean ignoreFurniStacking) {
+    return this.itemManager.moveFurniTo(item, tile, rotation, actor, sendUpdates, checkForUnits, ignoreFurniStacking);
+  }
+
+  public FurnitureMovementError moveFurniTo(HabboItem item, RoomTile tile, int rotation,
+      Habbo actor, boolean sendUpdates, boolean checkForUnits, boolean ignoreFurniStacking,
+      boolean persistImmediately) {
+    return this.itemManager.moveFurniTo(item, tile, rotation, actor, sendUpdates, checkForUnits,
+        ignoreFurniStacking, persistImmediately);
+  }
+
+  public FurnitureMovementError moveFurniTo(HabboItem item, RoomTile tile, int rotation,
+      Habbo actor, boolean sendUpdates, boolean checkForUnits, boolean ignoreFurniStacking,
+      boolean persistImmediately, Double preservedHeight) {
+    return this.itemManager.moveFurniTo(item, tile, rotation, actor, sendUpdates, checkForUnits,
+        ignoreFurniStacking, persistImmediately, preservedHeight);
+  }
+
+  public FurnitureMovementError rotateFurniForWired(HabboItem item, int rotation, Habbo actor,
+      boolean checkForUnits, boolean ignoreFurniStacking) {
+    return this.itemManager.rotateFurniForWired(
+        item, rotation, actor, checkForUnits, ignoreFurniStacking);
+  }
+
   public FurnitureMovementError slideFurniTo(HabboItem item, RoomTile tile, int rotation) {
     return this.itemManager.slideFurniTo(item, tile, rotation);
   }
@@ -2467,5 +3215,54 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
   public Collection<RoomUnit> getRoomUnitsAt(RoomTile tile) {
     return this.unitManager.getRoomUnitsAt(tile);
+  }
+
+  private static final class FurniLoadSnapshot {
+    private final int itemId;
+    private final short x;
+    private final short y;
+    private final int rotation;
+    private final double z;
+    private final String extradata;
+
+    private FurniLoadSnapshot(HabboItem item) {
+      this.itemId = item.getId();
+      this.x = item.getX();
+      this.y = item.getY();
+      this.rotation = item.getRotation();
+      this.z = item.getZ();
+      this.extradata = item.getExtradata();
+    }
+
+    private boolean applyTo(HabboItem item) {
+      boolean changed = false;
+
+      if (item.getX() != this.x) {
+        item.setX(this.x);
+        changed = true;
+      }
+
+      if (item.getY() != this.y) {
+        item.setY(this.y);
+        changed = true;
+      }
+
+      if (item.getRotation() != this.rotation) {
+        item.setRotation(this.rotation);
+        changed = true;
+      }
+
+      if (Double.compare(item.getZ(), this.z) != 0) {
+        item.setZ(this.z);
+        changed = true;
+      }
+
+      if (!String.valueOf(item.getExtradata()).equals(String.valueOf(this.extradata))) {
+        item.setExtradata(this.extradata);
+        changed = true;
+      }
+
+      return changed;
+    }
   }
 }

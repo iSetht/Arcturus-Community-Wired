@@ -1,8 +1,38 @@
 package com.eu.habbo.messages.outgoing;
 
 public class Outgoing {
+    public static final int ChestOpenComposer = 40;
+    public static final int ChestFurniContentsComposer = 1062;
+    public static final int ChestFurniContentsUpdateComposer = 2655;
+    public static final int ChestCoinBalanceComposer = 3316;
+    public static final int ChestDepositStartedComposer = 666;
+    public static final int ChestDepositUpdateComposer = 140;
+    public static final int ChestDepositCompletedComposer = 1106;
+    public static final int ChestDepositCancelledComposer = 3282;
+    public static final int ChestContractOpenComposer = 4070;
+    public static final int ChestRewardPopupComposer = 4072;
+    public static final int ChestTransactionFailedComposer = 4073;
+    public static final int ChestNotificationComposer = 4075;
+
     public static final int PetStatusUpdateComposer = 1907;//error 404
 
+    public final static int WiredSelectorDataComposer = 3950;
+    public final static int AreaHideDataComposer = 4067;
+    public final static int AreaHideFloorHolesComposer = 4068;
+    public final static int WiredVariableDataComposer = 3952;
+    public final static int WiredExtraDataComposer = 3956;
+    public final static int WiredClickSettingsComposer = 3957;
+    public final static int WiredCreatorToolsRoomStatsComposer = 4051;
+    public final static int WiredCreatorToolsOpenComposer = 4052;
+    public final static int WiredCreatorToolsInspectionValuesComposer = 4054;
+    public final static int WiredCreatorToolsLogsComposer = 4056;
+    public final static int WiredCreatorToolsVariableHighlightComposer = 4057;
+    public final static int WiredCreatorToolsCatalogComposer = 4059;
+      public final static int WiredCreatorToolsCreateItemComposer = 4060;
+      public final static int WiredMouseHoldStateComposer = 4065;
+      public final static int WiredMovementsComposer = 4066;
+    public final static int WiredCreatorToolsChestLogsComposer = 4074;
+    public final static int WiredClickUserResponseComposer = 108;
     public final static int CfhTopicsMessageComposer = 325;
     public final static int FavoriteRoomsCountComposer = 151;
     public final static int UserCurrencyComposer = 2018;

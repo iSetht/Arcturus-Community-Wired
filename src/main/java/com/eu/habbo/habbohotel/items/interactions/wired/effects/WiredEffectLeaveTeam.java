@@ -37,18 +37,20 @@ public class WiredEffectLeaveTeam extends InteractionWiredEffect {
     @Override
     public void execute(WiredContext ctx) {
         Room room = ctx.room();
-        Habbo habbo = ctx.actor().map(room::getHabbo).orElse(null);
+        for (RoomUnit roomUnit : this.resolveSourceUsers(ctx)) {
+            Habbo habbo = room.getHabbo(roomUnit);
 
-        if (habbo != null) {
-            if (habbo.getHabboInfo().getCurrentGame() != null) {
-                Game game = room.getGame(habbo.getHabboInfo().getCurrentGame());
+            if (habbo != null) {
+                if (habbo.getHabboInfo().getCurrentGame() != null) {
+                    Game game = room.getGame(habbo.getHabboInfo().getCurrentGame());
 
-                if (game == null) {
-                    game = room.getGameOrCreate(WiredGame.class);
-                }
+                    if (game == null) {
+                        game = room.getGameOrCreate(WiredGame.class);
+                    }
 
-                if (game != null) {
-                    game.removeHabbo(habbo);
+                    if (game != null) {
+                        game.removeHabbo(habbo);
+                    }
                 }
             }
         }
@@ -62,12 +64,13 @@ public class WiredEffectLeaveTeam extends InteractionWiredEffect {
 
     @Override
     public String getWiredData() {
-        return WiredManager.getGson().toJson(new JsonData(this.getDelay()));
+        return this.withSourceData(WiredManager.getGson().toJson(new JsonData(this.getDelay())));
     }
 
     @Override
     public void loadWiredData(ResultSet set, Room room) throws SQLException {
         String wiredData = set.getString("wired_data");
+        this.loadSourceData(wiredData);
 
         if(wiredData.startsWith("{")) {
             JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
@@ -81,6 +84,7 @@ public class WiredEffectLeaveTeam extends InteractionWiredEffect {
     @Override
     public void onPickUp() {
         this.setDelay(0);
+        this.resetSources();
     }
 
     @Override
@@ -96,29 +100,13 @@ public class WiredEffectLeaveTeam extends InteractionWiredEffect {
         message.appendInt(this.getBaseItem().getSpriteId());
         message.appendInt(this.getId());
         message.appendString("");
-        message.appendInt(0);
+        message.appendInt(1);
+        message.appendInt(this.getUserSource());
         message.appendInt(0);
         message.appendInt(this.getType().code);
         message.appendInt(this.getDelay());
 
-        if (this.requiresTriggeringUser()) {
-            List<Integer> invalidTriggers = new ArrayList<>();
-            room.getRoomSpecialTypes().getTriggers(this.getX(), this.getY()).forEach(new TObjectProcedure<InteractionWiredTrigger>() {
-                @Override
-                public boolean execute(InteractionWiredTrigger object) {
-                    if (!object.isTriggeredByRoomUnit()) {
-                        invalidTriggers.add(object.getBaseItem().getSpriteId());
-                    }
-                    return true;
-                }
-            });
-            message.appendInt(invalidTriggers.size());
-            for (Integer i : invalidTriggers) {
-                message.appendInt(i);
-            }
-        } else {
-            message.appendInt(0);
-        }
+        this.appendActorConflictTriggers(message, room);
     }
 
     @Override
@@ -129,6 +117,7 @@ public class WiredEffectLeaveTeam extends InteractionWiredEffect {
             throw new WiredSaveException("Delay too long");
 
         this.setDelay(delay);
+        this.saveUserSource(settings, 0);
         return true;
     }
 

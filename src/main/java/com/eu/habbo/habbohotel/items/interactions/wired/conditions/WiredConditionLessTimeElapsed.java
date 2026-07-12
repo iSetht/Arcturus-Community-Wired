@@ -15,7 +15,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class WiredConditionLessTimeElapsed extends InteractionWiredCondition {
-    public static final WiredConditionType type = WiredConditionType.TIME_LESS_THAN;
+    public static final WiredConditionType type = WiredConditionType.LESS_THAN_X_ELAPSED;
 
     private int cycles;
 

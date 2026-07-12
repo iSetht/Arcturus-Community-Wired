@@ -3,6 +3,7 @@ package com.eu.habbo.networking.gameserver.decoders;
 import com.eu.habbo.Emulator;
 import com.eu.habbo.messages.ClientMessage;
 import com.eu.habbo.messages.PacketManager;
+import com.eu.habbo.messages.incoming.Incoming;
 import com.eu.habbo.threading.runnables.ChannelReadHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -44,7 +45,14 @@ public class GameMessageHandler extends ChannelInboundHandlerAdapter {
         try {
             ChannelReadHandler handler = new ChannelReadHandler(ctx, message);
 
-            if (PacketManager.MULTI_THREADED_PACKET_HANDLING) {
+            // Mouse-hold packets form one ordered state machine. Running start,
+            // update and release concurrently allows later packets to overtake
+            // earlier ones, leaving stale targets or a hold that starts after its
+            // release. Keep this small lifecycle on Netty's ordered channel path.
+            boolean orderedMouseHoldPacket = message.getMessageId() == Incoming.WiredMouseHoldStartEvent
+                    || message.getMessageId() == Incoming.WiredMouseHoldReleaseEvent;
+
+            if (PacketManager.MULTI_THREADED_PACKET_HANDLING && !orderedMouseHoldPacket) {
                 Emulator.getThreading().run(handler);
                 return;
             }

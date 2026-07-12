@@ -27,19 +27,26 @@ public class GameTimer implements Runnable {
             return;
         }
 
-        timer.reduceTime();
-        if (timer.getTimeNow() < 0) timer.setTimeNow(0);
+        // halfTick=true  -> 0.5s has elapsed since last whole second, don't decrement
+        // halfTick=false ->  a full second has elapsed, decrement
+        timer.setHalfTick(!timer.isHalfTick());
+
+        if (!timer.isHalfTick()) {
+            timer.reduceTime();
+            if (timer.getTimeNow() < 0) timer.setTimeNow(0);
+            room.updateItem(timer);
+        }
 
         if (timer.getTimeNow() > 0) {
+            // Fire the wired check every half-second since counter at set time uses 0.5 increments
+            WiredManager.triggerCounterReachesSetTime(room, timer);
             timer.setThreadActive(true);
-            Emulator.getThreading().run(this, 1000);
+            Emulator.getThreading().run(this, 500);
         } else {
             timer.setThreadActive(false);
             timer.setTimeNow(0);
             timer.endGame(room);
             WiredManager.triggerGameEnds(room);
         }
-
-        room.updateItem(timer);
     }
 }

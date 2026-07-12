@@ -15,6 +15,7 @@ import com.eu.habbo.habbohotel.games.tag.RollerskateGame;
 import com.eu.habbo.habbohotel.games.wired.WiredGame;
 import com.eu.habbo.habbohotel.guilds.Guild;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWired;
+import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectTeleportToRoom;
 import com.eu.habbo.habbohotel.messenger.MessengerBuddy;
 import com.eu.habbo.habbohotel.navigation.NavigatorFilterComparator;
 import com.eu.habbo.habbohotel.navigation.NavigatorFilterField;
@@ -588,6 +589,10 @@ public class RoomManager {
         if (room == null || room.getLayout() == null)
             return;
 
+        if (doorLocation == null) {
+            doorLocation = this.consumeTeleportDoorLocation(habbo, room);
+        }
+
         if (Emulator.getConfig().getBoolean("hotel.room.enter.logs")) {
             this.logEnter(habbo, room);
         }
@@ -692,6 +697,22 @@ public class RoomManager {
         }
     }
 
+    private RoomTile consumeTeleportDoorLocation(Habbo habbo, Room room) {
+        Object targetRoomId = habbo.getHabboStats().cache.remove("teleport_target_room_id");
+        Object targetItemId = habbo.getHabboStats().cache.remove("teleport_target_item_id");
+
+        if (!(targetRoomId instanceof Integer) || !(targetItemId instanceof Integer) || ((Integer) targetRoomId) != room.getId()) {
+            return null;
+        }
+
+        HabboItem targetItem = room.getHabboItem((Integer) targetItemId);
+        if (targetItem == null) {
+            return null;
+        }
+
+        return room.getLayout().getTile(targetItem.getX(), targetItem.getY());
+    }
+
     public void enterRoom(final Habbo habbo, final Room room) {
         if (habbo.getHabboInfo().getLoadingRoom() != room.getId()) {
             if (habbo.getHabboInfo().getLoadingRoom() != 0) {
@@ -716,9 +737,14 @@ public class RoomManager {
         if (habbo.getRoomUnit().getCurrentLocation() == null && !habbo.getRoomUnit().isTeleporting) {
             RoomTile doorTile = room.getLayout().getTile(room.getLayout().getDoorX(), room.getLayout().getDoorY());
 
-            if (doorTile != null) {
-                habbo.getRoomUnit().setLocation(doorTile);
-                habbo.getRoomUnit().setZ(doorTile.getStackHeight());
+            // If AreaHide invert mode is hiding the door tile, spawn at the first
+            // visible tile inward instead so the avatar doesn't appear at ~80 altitude.
+            RoomTile spawnTile = room.getAreaHideSafeSpawnTile();
+            if (spawnTile == null) spawnTile = doorTile;
+
+            if (spawnTile != null) {
+                habbo.getRoomUnit().setLocation(spawnTile);
+                habbo.getRoomUnit().setZ(spawnTile.getStackHeight());
             }
 
             habbo.getRoomUnit().setBodyRotation(RoomUserRotation.values()[room.getLayout().getDoorDirection()]);
@@ -772,6 +798,7 @@ public class RoomManager {
 
             int effect = habbo.getInventory().getEffectsComponent().activatedEffect;
             room.giveEffect(habbo.getRoomUnit(), effect, -1);
+            WiredEffectTeleportToRoom.applyCachedArrivalEffect(habbo, room);
         }
 
 
@@ -817,6 +844,14 @@ public class RoomManager {
                 public boolean execute(HabboItem object) {
                     if (room.isHideWired() && object instanceof InteractionWired)
                         return true;
+
+                    if (room.isHideInvisibleFurni() && Room.INVISIBLE_ITEM_NAMES.contains(object.getBaseItem().getName())){
+                        return true;
+                    }
+
+                    if (room.isItemHiddenByAreaHide(object)) {
+                        return true;
+                    }
 
                     floorItems.add(object);
                     if (floorItems.size() == 250) {
@@ -957,7 +992,11 @@ public class RoomManager {
             habbo.getRoomUnit().setPathFinderRoom(null);
 
             this.logExit(habbo);
+            WiredManager.triggerUserLeavesRoom(room, habbo.getRoomUnit());
             room.removeHabbo(habbo, true);
+            if (Emulator.getGameEnvironment() != null && Emulator.getGameEnvironment().getChestManager() != null) {
+                Emulator.getGameEnvironment().getChestManager().autoLockChestsForOwner(room, habbo);
+            }
 
             if (redirectToHotelView) {
                 habbo.getClient().sendResponse(new HotelViewComposer());

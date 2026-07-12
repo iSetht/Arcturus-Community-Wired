@@ -1,6 +1,7 @@
 package com.eu.habbo.habbohotel.items.interactions.wired.triggers;
 
 import com.eu.habbo.habbohotel.items.Item;
+import com.eu.habbo.habbohotel.items.ICycleable;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
@@ -27,12 +28,13 @@ import java.util.List;
  * timing compared to the old 500ms room cycle.
  * </p>
  */
-public class WiredTriggerRepeater extends InteractionWiredTrigger implements WiredTickable, WiredTriggerReset {
+public class WiredTriggerRepeater extends InteractionWiredTrigger implements WiredTickable, WiredTriggerReset, ICycleable {
     public static final WiredTriggerType type = WiredTriggerType.PERIODICALLY;
     public static final int DEFAULT_DELAY = 10 * 500; // 5 seconds default
 
     /** The interval in milliseconds between triggers */
     protected int repeatTime = DEFAULT_DELAY;
+    private int accumulatedCycleTime;
 
     public WiredTriggerRepeater(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
@@ -75,11 +77,13 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements Wir
         if (this.repeatTime < 500) {
             this.repeatTime = 20 * 500;
         }
+        this.accumulatedCycleTime = 0;
     }
 
     @Override
     public void onPickUp() {
         this.repeatTime = DEFAULT_DELAY;
+        this.accumulatedCycleTime = 0;
     }
 
     @Override
@@ -99,13 +103,14 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements Wir
         message.appendInt(this.repeatTime / 500);
         message.appendInt(0);
         message.appendInt(this.getType().code);
+        message.appendInt(0);
 
         if (!this.isTriggeredByRoomUnit()) {
             List<Integer> invalidTriggers = new ArrayList<>();
             room.getRoomSpecialTypes().getEffects(this.getX(), this.getY()).forEach(new TObjectProcedure<InteractionWiredEffect>() {
                 @Override
                 public boolean execute(InteractionWiredEffect object) {
-                    if (object.requiresTriggeringUser()) {
+                    if (object.requiresActor()) {
                         invalidTriggers.add(object.getBaseItem().getSpriteId());
                     }
                     return true;
@@ -130,39 +135,45 @@ public class WiredTriggerRepeater extends InteractionWiredTrigger implements Wir
         }
 
         this.repeatTime = newRepeatTime;
+        this.accumulatedCycleTime = 0;
 
         return true;
     }
 
-    // ========== WiredTickable Implementation ==========
-
     @Override
-    public void onWiredTick(Room room, long tickCount, int tickIntervalMs) {
-        // Calculate elapsed time based on global tick count
-        // All repeaters with the same interval fire on the exact same tick
-        long elapsedMs = tickCount * tickIntervalMs;
-        
-        // Fire when elapsed time is a multiple of repeatTime
-        if (elapsedMs % this.repeatTime == 0) {
+    public void cycle(Room room) {
+        this.accumulatedCycleTime += 500;
+
+        if (this.accumulatedCycleTime >= this.repeatTime) {
+            this.accumulatedCycleTime %= this.repeatTime;
+
             if (this.getRoomId() != 0 && room.isLoaded()) {
                 WiredManager.triggerTimerRepeat(room, this);
             }
         }
     }
 
+    // ========== WiredTickable Implementation ==========
+
+    @Override
+    public void onWiredTick(Room room, long tickCount, int tickIntervalMs) {
+        // 500ms repeaters are advanced by the room cycle so furni movement and
+        // avatar walk status updates share the same tick.
+    }
+
     @Override
     public void resetTimer() {
-        // No-op - using global tick count, no local state to reset
+        this.accumulatedCycleTime = 0;
     }
 
     @Override
     public void onRegistered(Room room, long currentTimeMillis) {
-        // No-op - using global tick count
+        this.accumulatedCycleTime = 0;
     }
 
     @Override
     public void onUnregistered(Room room) {
-        // No-op - using global tick count
+        this.accumulatedCycleTime = 0;
     }
 
     @Override

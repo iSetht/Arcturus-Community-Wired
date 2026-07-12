@@ -151,7 +151,7 @@ public abstract class Game implements Runnable {
 
         if (winningTeam != null) {
             for (GamePlayer player : winningTeam.getMembers()) {
-                WiredManager.triggerTeamWins(this.room, player.getHabbo().getRoomUnit());
+                //WiredManager.triggerTeamWins(this.room, player.getHabbo().getRoomUnit());
 
                 Habbo winner = player.getHabbo();
                 if (winner != null) {
@@ -169,7 +169,7 @@ public abstract class Game implements Runnable {
                 if (team == winningTeam) continue;
 
                 for (GamePlayer player : team.getMembers()) {
-                    WiredManager.triggerTeamLoses(this.room, player.getHabbo().getRoomUnit());
+                    // WiredManager.triggerTeamLoses(this.room, player.getHabbo().getRoomUnit());
                 }
 
                 if (team.getMembers().size() > 0 && team.getTotalScore() > 0) {

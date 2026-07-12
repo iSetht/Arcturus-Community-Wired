@@ -306,13 +306,13 @@ public class RoomChatManager {
         // Handle commands and wired
         if (chatType != RoomChatType.WHISPER) {
             if (CommandHandler.handleCommand(habbo.getClient(), roomChatMessage.getUnfilteredMessage())) {
-                WiredManager.triggerUserSays(habbo.getHabboInfo().getCurrentRoom(), habbo.getRoomUnit(), roomChatMessage.getMessage());
+                WiredManager.triggerUserSays(habbo.getHabboInfo().getCurrentRoom(), habbo.getRoomUnit(), roomChatMessage.getMessage(), chatType, roomChatMessage.getBubble());
                 roomChatMessage.isCommand = true;
                 return;
             }
 
             if (!ignoreWired) {
-                if (WiredManager.triggerUserSays(habbo.getHabboInfo().getCurrentRoom(), habbo.getRoomUnit(), roomChatMessage.getMessage())) {
+                if (WiredManager.triggerUserSays(habbo.getHabboInfo().getCurrentRoom(), habbo.getRoomUnit(), roomChatMessage.getMessage(), chatType, roomChatMessage.getBubble())) {
                     habbo.getClient().sendResponse(new RoomUserWhisperComposer(
                         new RoomChatMessage(roomChatMessage.getMessage(), habbo, habbo,
                             roomChatMessage.getBubble())));

@@ -9,9 +9,11 @@ public class HotelViewEvent extends MessageHandler {
     @Override
     public void handle() throws Exception {
         this.client.getHabbo().getHabboInfo().setLoadingRoom(0);
+        boolean redirectedToHotelView = false;
 
         if (this.client.getHabbo().getHabboInfo().getCurrentRoom() != null) {
             Emulator.getGameEnvironment().getRoomManager().leaveRoom(this.client.getHabbo(), this.client.getHabbo().getHabboInfo().getCurrentRoom());
+            redirectedToHotelView = true;
         }
 
         if (this.client.getHabbo().getHabboInfo().getRoomQueueId() != 0) {
@@ -22,6 +24,9 @@ public class HotelViewEvent extends MessageHandler {
             } else {
                 this.client.getHabbo().getHabboInfo().setRoomQueueId(0);
             }
+        }
+
+        if (!redirectedToHotelView) {
             this.client.sendResponse(new HotelViewComposer());
         }
 

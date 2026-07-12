@@ -45,8 +45,8 @@ public abstract class InteractionWiredTrigger extends InteractionWired implement
     @Override
     public void onClick(GameClient client, Room room, Object[] objects) throws Exception {
         if (client != null) {
-            if (room.hasRights(client.getHabbo())) {
-                client.sendResponse(new WiredTriggerDataComposer(this, room));
+            if (room.canInspectWired(client.getHabbo())) {
+                client.sendResponse(new WiredTriggerDataComposer(this, room, client.getHabbo()));
                 this.activateBox(room);
             }
         }

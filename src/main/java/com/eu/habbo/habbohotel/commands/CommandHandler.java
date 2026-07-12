@@ -295,6 +295,7 @@ public class CommandHandler {
         addCommand(new SoftKickCommand());
         addCommand(new SubscriptionCommand());
         addCommand(new UpdateChatBubblesCommand());
+        addCommand(new WiredCreatorToolsCommand());
 
         addCommand(new TestCommand());
     }

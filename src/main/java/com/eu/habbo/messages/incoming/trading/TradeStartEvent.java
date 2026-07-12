@@ -37,6 +37,16 @@ public class TradeStartEvent extends MessageHandler {
 
                     if (targetUser.getHabboStats().userIgnored(this.client.getHabbo().getHabboInfo().getId())) return;
 
+                    if (Emulator.getGameEnvironment().getChestManager().hasActiveSession(this.client.getHabbo())) {
+                        this.client.sendResponse(new TradeStartFailComposer(TradeStartFailComposer.YOU_ALREADY_TRADING));
+                        return;
+                    }
+
+                    if (Emulator.getGameEnvironment().getChestManager().hasActiveSession(targetUser)) {
+                        this.client.sendResponse(new TradeStartFailComposer(TradeStartFailComposer.TARGET_ALREADY_TRADING, targetUser.getHabboInfo().getUsername()));
+                        return;
+                    }
+
                     if (this.client.getHabbo().getRoomUnit().hasStatus(RoomUnitStatus.TRADING)) {
                         this.client.sendResponse(new TradeStartFailComposer(TradeStartFailComposer.YOU_ALREADY_TRADING));
                         return;

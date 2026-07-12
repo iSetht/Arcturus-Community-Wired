@@ -65,9 +65,29 @@ import com.eu.habbo.messages.incoming.unknown.RequestResolutionEvent;
 import com.eu.habbo.messages.incoming.unknown.UnknownEvent1;
 import com.eu.habbo.messages.incoming.users.*;
 import com.eu.habbo.messages.incoming.wired.WiredApplySetConditionsEvent;
+import com.eu.habbo.messages.incoming.wired.AreaHideSaveDataEvent;
+import com.eu.habbo.messages.incoming.wired.WiredClickSettingsToggleEvent;
 import com.eu.habbo.messages.incoming.wired.WiredConditionSaveDataEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsCatalogEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsCancelPlacementEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsChestLogsEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsCreateItemEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsInspectionValuesEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsLogsEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsRoomActionEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsRoomStatsEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsSaveSettingsEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsVariableActionEvent;
+import com.eu.habbo.messages.incoming.wired.WiredCreatorToolsVariableHighlightEvent;
 import com.eu.habbo.messages.incoming.wired.WiredEffectSaveDataEvent;
+import com.eu.habbo.messages.incoming.wired.WiredExtraSaveDataEvent;
+import com.eu.habbo.messages.incoming.wired.WiredMouseHoldReleaseEvent;
+import com.eu.habbo.messages.incoming.wired.WiredMouseHoldStartEvent;
+import com.eu.habbo.messages.incoming.wired.WiredMouseHoldSubscriptionEvent;
 import com.eu.habbo.messages.incoming.wired.WiredTriggerSaveDataEvent;
+import com.eu.habbo.messages.incoming.wired.WiredSelectorSaveDataEvent;
+import com.eu.habbo.messages.incoming.wired.WiredVariableSaveDataEvent;
+import com.eu.habbo.messages.incoming.wired.chests.*;
 import com.eu.habbo.plugin.EventHandler;
 import com.eu.habbo.plugin.events.emulator.EmulatorConfigUpdatedEvent;
 import gnu.trove.map.hash.THashMap;
@@ -107,6 +127,7 @@ public class PacketManager {
         this.registerUnknown();
         this.registerModTool();
         this.registerTrading();
+        this.registerChests();
         this.registerGuilds();
         this.registerPets();
         this.registerWired();
@@ -320,6 +341,7 @@ public class PacketManager {
         this.registerHandler(Incoming.ConfirmChangeNameEvent, ConfirmChangeNameEvent.class);
         this.registerHandler(Incoming.ChangeChatBubbleEvent, ChangeChatBubbleEvent.class);
         this.registerHandler(Incoming.UpdateUIFlagsEvent, UpdateUIFlagsEvent.class);
+        this.registerHandler(Incoming.ClickAvatarEvent, ClickAvatarEvent.class);
     }
 
     private void registerNavigator() throws Exception {
@@ -386,6 +408,7 @@ public class PacketManager {
         this.registerHandler(Incoming.RoomUserStartTypingEvent, RoomUserStartTypingEvent.class);
         this.registerHandler(Incoming.RoomUserStopTypingEvent, RoomUserStopTypingEvent.class);
         this.registerHandler(Incoming.ToggleFloorItemEvent, ToggleFloorItemEvent.class);
+        this.registerHandler(Incoming.ClickFurniEvent, ClickFurniEvent.class);
         this.registerHandler(Incoming.ToggleWallItemEvent, ToggleWallItemEvent.class);
         this.registerHandler(Incoming.RoomBackgroundEvent, RoomBackgroundEvent.class);
         this.registerHandler(Incoming.MannequinSaveNameEvent, MannequinSaveNameEvent.class);
@@ -516,6 +539,20 @@ public class PacketManager {
         this.registerHandler(Incoming.TradeCancelEvent, TradeCancelEvent.class);
     }
 
+    void registerChests() throws Exception {
+        this.registerHandler(Incoming.ChestOpenEvent, ChestOpenEvent.class);
+        this.registerHandler(Incoming.ChestCloseEvent, ChestCloseEvent.class);
+        this.registerHandler(Incoming.ChestWithdrawFurniEvent, ChestWithdrawFurniEvent.class);
+        this.registerHandler(Incoming.ChestWithdrawCoinsEvent, ChestWithdrawCoinsEvent.class);
+        this.registerHandler(Incoming.ChestWithdrawAllEvent, ChestWithdrawAllEvent.class);
+        this.registerHandler(Incoming.ChestStartDepositEvent, ChestStartDepositEvent.class);
+        this.registerHandler(Incoming.ChestDepositItemsEvent, ChestDepositItemsEvent.class);
+        this.registerHandler(Incoming.ChestDepositAcceptEvent, ChestDepositAcceptEvent.class);
+        this.registerHandler(Incoming.ChestDepositCancelEvent, ChestDepositCancelEvent.class);
+        this.registerHandler(Incoming.ChestSaveSettingsEvent, ChestSaveSettingsEvent.class);
+        this.registerHandler(Incoming.ChestContractSaveEvent, ChestContractSaveEvent.class);
+    }
+
     void registerGuilds() throws Exception {
         this.registerHandler(Incoming.RequestGuildBuyRoomsEvent, RequestGuildBuyRoomsEvent.class);
         this.registerHandler(Incoming.RequestGuildPartsEvent, RequestGuildPartsEvent.class);
@@ -581,6 +618,25 @@ public class PacketManager {
         this.registerHandler(Incoming.WiredEffectSaveDataEvent, WiredEffectSaveDataEvent.class);
         this.registerHandler(Incoming.WiredConditionSaveDataEvent, WiredConditionSaveDataEvent.class);
         this.registerHandler(Incoming.WiredApplySetConditionsEvent, WiredApplySetConditionsEvent.class);
+        this.registerHandler(Incoming.AreaHideSaveDataEvent, AreaHideSaveDataEvent.class);
+        this.registerHandler(Incoming.WiredSelectorSaveDataEvent, WiredSelectorSaveDataEvent.class);
+        this.registerHandler(Incoming.WiredVariableSaveDataEvent, WiredVariableSaveDataEvent.class);
+        this.registerHandler(Incoming.WiredExtraSaveDataEvent, WiredExtraSaveDataEvent.class);
+        this.registerHandler(Incoming.WiredClickSettingsToggleEvent, WiredClickSettingsToggleEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsRoomStatsEvent, WiredCreatorToolsRoomStatsEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsSaveSettingsEvent, WiredCreatorToolsSaveSettingsEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsInspectionValuesEvent, WiredCreatorToolsInspectionValuesEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsVariableActionEvent, WiredCreatorToolsVariableActionEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsLogsEvent, WiredCreatorToolsLogsEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsVariableHighlightEvent, WiredCreatorToolsVariableHighlightEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsRoomActionEvent, WiredCreatorToolsRoomActionEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsCatalogEvent, WiredCreatorToolsCatalogEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsCreateItemEvent, WiredCreatorToolsCreateItemEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsCancelPlacementEvent, WiredCreatorToolsCancelPlacementEvent.class);
+        this.registerHandler(Incoming.WiredCreatorToolsChestLogsEvent, WiredCreatorToolsChestLogsEvent.class);
+        this.registerHandler(Incoming.WiredMouseHoldStartEvent, WiredMouseHoldStartEvent.class);
+        this.registerHandler(Incoming.WiredMouseHoldReleaseEvent, WiredMouseHoldReleaseEvent.class);
+        this.registerHandler(Incoming.WiredMouseHoldSubscriptionEvent, WiredMouseHoldSubscriptionEvent.class);
     }
 
     void registerUnknown() throws Exception {

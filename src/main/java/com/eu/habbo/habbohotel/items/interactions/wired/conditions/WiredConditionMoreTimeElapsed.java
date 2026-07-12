@@ -15,7 +15,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class WiredConditionMoreTimeElapsed extends InteractionWiredCondition {
-    private static final WiredConditionType type = WiredConditionType.TIME_MORE_THAN;
+    private static final WiredConditionType type = WiredConditionType.MORE_THAN_X_ELAPSED;
 
     private int cycles;
 

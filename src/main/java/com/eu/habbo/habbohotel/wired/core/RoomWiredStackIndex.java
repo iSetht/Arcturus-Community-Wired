@@ -2,10 +2,9 @@ package com.eu.habbo.habbohotel.wired.core;
 
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredCondition;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
+import com.eu.habbo.habbohotel.items.interactions.InteractionWiredExtra;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraOrEval;
-import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraRandom;
-import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraUnseen;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomSpecialTypes;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
@@ -173,15 +172,18 @@ public final class RoomWiredStackIndex implements WiredStackIndex {
         List<IWiredEffect> effects = collectEffects(rawEffects);
 
         // Check for extras
+        THashSet<InteractionWiredExtra> rawExtras = specialTypes.getExtras(x, y);
+        List<InteractionWiredExtra> extras = collectExtras(rawExtras);
         boolean useOrMode = specialTypes.hasExtraType(x, y, WiredExtraOrEval.class);
-        boolean useRandom = specialTypes.hasExtraType(x, y, WiredExtraRandom.class);
-        boolean useUnseen = specialTypes.hasExtraType(x, y, WiredExtraUnseen.class);
+        boolean useRandom = false;
+        boolean useUnseen = false;
 
         return new WiredStack(
                 trigger,
                 wrappedTrigger,
                 conditions,
                 effects,
+                extras,
                 useOrMode,
                 useRandom,
                 useUnseen
@@ -215,7 +217,18 @@ public final class RoomWiredStackIndex implements WiredStackIndex {
         for (InteractionWiredEffect effect : rawEffects) {
             effects.add(effect);
         }
+        effects.sort(Comparator
+                .comparingDouble(effect -> ((InteractionWiredEffect) effect).getZ())
+                .thenComparingInt(effect -> ((InteractionWiredEffect) effect).getId()));
         return effects;
+    }
+
+    private List<InteractionWiredExtra> collectExtras(THashSet<InteractionWiredExtra> rawExtras) {
+        if (rawExtras == null || rawExtras.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return new ArrayList<>(rawExtras);
     }
 
     /**

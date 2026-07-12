@@ -42,7 +42,7 @@ import java.sql.SQLException;
  */
 public class WiredConditionMovementValidation extends InteractionWiredCondition {
     
-    public static final WiredConditionType type = WiredConditionType.MOVEMENT_VALIDATION;
+    public static final WiredConditionType type = WiredConditionType.CAN_PERFORM_MOVEMENT;
 
     public WiredConditionMovementValidation(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);

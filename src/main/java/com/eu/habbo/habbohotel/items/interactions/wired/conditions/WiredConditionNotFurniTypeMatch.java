@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class WiredConditionNotFurniTypeMatch extends InteractionWiredCondition {
-    public static final WiredConditionType type = WiredConditionType.NOT_STUFF_IS;
+    public static final WiredConditionType type = WiredConditionType.NOT_FURNI_MATCHES;
 
     private THashSet<HabboItem> items = new THashSet<>();
 

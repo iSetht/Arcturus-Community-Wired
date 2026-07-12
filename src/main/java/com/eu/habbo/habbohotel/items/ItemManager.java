@@ -45,9 +45,57 @@ import com.eu.habbo.habbohotel.items.interactions.totems.InteractionTotemPlanet;
 import com.eu.habbo.habbohotel.items.interactions.wired.conditions.*;
 import com.eu.habbo.habbohotel.items.interactions.wired.effects.*;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredBlob;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraAnimationTime;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraCancelAnimation;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraChestFurniTypeScanner;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraCarryAvatar;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraCustomContract;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraExecuteInOrder;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraFurniNamePlaceholder;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraLevelUpSystem;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraMovementCurve;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraMovementPhysics;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraOrEval;
-import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraRandom;
-import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraUnseen;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraProjectile;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraRandomEffect;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraTextConnector;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraTimeUtilities;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraExecutionLimit;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraUnseenEffect;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraUserNamePlaceholder;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraVariableCapturer;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraVariablePlaceholder;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFilterXFurni;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFilterXUser;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFilterFurniHighLow;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFilterUserHighLow;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFurniByType;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFurniInArea;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFurniInNeighborhood;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFurniOnFurni;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFurniFromSignal;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFurniPicks;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFurniWithAltitude;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorFurniWithVariable;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorRemoteSelection;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorTilePicks;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserByAction;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserByName;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserByType;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserFromSignal;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserInGroup;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserInNeighborhood;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserInTeam;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserOnFurni;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserWithHanditem;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUserWithVariable;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorUsersInArea;
+import com.eu.habbo.habbohotel.items.interactions.wired.variables.WiredVariableContext;
+import com.eu.habbo.habbohotel.items.interactions.wired.variables.WiredVariableEcho;
+import com.eu.habbo.habbohotel.items.interactions.wired.variables.WiredVariableFurni;
+import com.eu.habbo.habbohotel.items.interactions.wired.variables.WiredVariableFromAnotherRoom;
+import com.eu.habbo.habbohotel.items.interactions.wired.variables.WiredVariableGlobal;
+import com.eu.habbo.habbohotel.items.interactions.wired.variables.WiredVariableUser;
 import com.eu.habbo.habbohotel.wired.highscores.WiredHighscoreManager;
 import com.eu.habbo.habbohotel.items.interactions.wired.triggers.*;
 import com.eu.habbo.habbohotel.users.Habbo;
@@ -67,10 +115,12 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Constructor;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ItemManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ItemManager.class);
+    private static final AtomicInteger TEMPORARY_ITEM_ID = new AtomicInteger(-1);
 
     //Configuration. Loaded from database & updated accordingly.
     public static boolean RECYCLER_ENABLED = true;
@@ -111,7 +161,12 @@ public class ItemManager {
 
     protected void loadItemInteractions() {
         this.interactionsList.add(new ItemInteraction("default", InteractionDefault.class));
+        this.interactionsList.add(new ItemInteraction("wf_antenna", InteractionDefault.class));
         this.interactionsList.add(new ItemInteraction("gate", InteractionGate.class));
+        this.interactionsList.add(new ItemInteraction("conf_invis_control", InteractionInvisControl.class));
+        this.interactionsList.add(new ItemInteraction("conf_area_hide", InteractionAreaHide.class));
+        this.interactionsList.add(new ItemInteraction("conf_wired_disable", InteractionWiredDisable.class));
+        this.interactionsList.add(new ItemInteraction("conf_handitem_block", InteractionHanditemBlock.class));
         this.interactionsList.add(new ItemInteraction("guild_furni", InteractionGuildFurni.class));
         this.interactionsList.add(new ItemInteraction("guild_gate", InteractionGuildGate.class));
         this.interactionsList.add(new ItemInteraction("background_toner", InteractionBackgroundToner.class));
@@ -170,6 +225,8 @@ public class ItemManager {
         this.interactionsList.add(new ItemInteraction("youtube", InteractionYoutubeTV.class));
         this.interactionsList.add(new ItemInteraction("jukebox", InteractionJukeBox.class));
         this.interactionsList.add(new ItemInteraction("switch", InteractionSwitch.class));
+        this.interactionsList.add(new ItemInteraction("wf_storage_furni", InteractionFurniChest.class));
+        this.interactionsList.add(new ItemInteraction("wf_storage_coins", InteractionCreditChest.class));
         this.interactionsList.add(new ItemInteraction("switch_remote_control", InteractionSwitchRemoteControl.class));
         this.interactionsList.add(new ItemInteraction("fx_box", InteractionFXBox.class));
         this.interactionsList.add(new ItemInteraction("blackhole", InteractionBlackHole.class));
@@ -193,90 +250,214 @@ public class ItemManager {
         this.interactionsList.add(new ItemInteraction("random_state", InteractionRandomState.class));
         this.interactionsList.add(new ItemInteraction("vendingmachine_no_sides", InteractionNoSidesVendingMachine.class));
         this.interactionsList.add(new ItemInteraction("tile_walkmagic", InteractionTileWalkMagic.class));
-
         this.interactionsList.add(new ItemInteraction("game_timer", InteractionGameTimer.class));
 
-        this.interactionsList.add(new ItemInteraction("wf_trg_walks_on_furni", WiredTriggerHabboWalkOnFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_walks_off_furni", WiredTriggerHabboWalkOffFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_enter_room", WiredTriggerHabboEntersRoom.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_says_something", WiredTriggerHabboSaysKeyword.class));
+        // Chest contracts
+        this.interactionsList.add(new ItemInteraction("wf_contracts", InteractionChestContract.class));
+        this.interactionsList.add(new ItemInteraction("wf_contract_payment", InteractionChestContract.class));
+        this.interactionsList.add(new ItemInteraction("wf_contract_reward", InteractionChestContract.class));
+        this.interactionsList.add(new ItemInteraction("wf_contract_trade", InteractionChestContract.class));
+
+
+
+        // TRIGGERS - match order of Habbo & our trigger types
+        this.interactionsList.add(new ItemInteraction("wf_trg_walks_on_furni", WiredTriggerAvatarWalkOnFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_walks_off_furni", WiredTriggerAvatarWalkOffFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_says_something", WiredTriggerAvatarSaysKeyword.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_state_changed", WiredTriggerFurniIsUsed.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_stuff_state", WiredTriggerFurniStateChange.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_enter_room", WiredTriggerAvatarEntersRoom.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_leave_room", WiredTriggerAvatarLeavesRoom.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_click_furni", WiredTriggerAvatarClicksFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_click_user", WiredTriggerAvatarClicksAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_click_tile", WiredTriggerAvatarClicksTile.class));
         this.interactionsList.add(new ItemInteraction("wf_trg_periodically", WiredTriggerRepeater.class));
         this.interactionsList.add(new ItemInteraction("wf_trg_period_long", WiredTriggerRepeaterLong.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_state_changed", WiredTriggerFurniStateToggled.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_at_given_time", WiredTriggerAtSetTime.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_at_time_long", WiredTriggerAtTimeLong.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_period_short", WiredTriggerRepeaterShort.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_user_performs_action", WiredTriggerAvatarPerformsAction.class));
         this.interactionsList.add(new ItemInteraction("wf_trg_collision", WiredTriggerCollision.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_game_starts", WiredTriggerGameStarts.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_recv_signal", WiredTriggerReceiveSignal.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_clock_counter", WiredTriggerCounterReachesSetTime.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_at_given_time", WiredTriggerAtSetTime.class));
         this.interactionsList.add(new ItemInteraction("wf_trg_game_ends", WiredTriggerGameEnds.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_bot_reached_stf", WiredTriggerBotReachedFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_bot_reached_avtr", WiredTriggerBotReachedHabbo.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_game_starts", WiredTriggerGameStarts.class));
         this.interactionsList.add(new ItemInteraction("wf_trg_score_achieved", WiredTriggerScoreAchieved.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_game_team_win", WiredTriggerTeamWins.class));
-        this.interactionsList.add(new ItemInteraction("wf_trg_game_team_lose", WiredTriggerTeamLoses.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_bot_reached_avtr", WiredTriggerBotReachedAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_bot_reached_stf", WiredTriggerBotReachedFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_var_changed", WiredTriggerVariableChanged.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_user_releases", WiredTriggerUserReleases.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_transaction_complete", WiredTriggerTransactionCompleted.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_transaction_fail", WiredTriggerTransactionFailed.class));
 
 
-        this.interactionsList.add(new ItemInteraction("wf_act_toggle_state", WiredEffectToggleFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_reset_timers", WiredEffectResetTimers.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_match_to_sshot", WiredEffectMatchFurni.class));
+
+        // Selectors
+        this.interactionsList.add(new ItemInteraction("wf_slc_furni_area", WiredSelectorFurniInArea.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_furni_neighborhood", WiredSelectorFurniInNeighborhood.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_furni_picks", WiredSelectorFurniPicks.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_furni_signal", WiredSelectorFurniFromSignal.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_furni_bytype", WiredSelectorFurniByType.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_furni_onfurni", WiredSelectorFurniOnFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_furni_altitude", WiredSelectorFurniWithAltitude.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_furni_with_var", WiredSelectorFurniWithVariable.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_area", WiredSelectorUsersInArea.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_neighborhood", WiredSelectorUserInNeighborhood.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_bytype", WiredSelectorUserByType.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_signal", WiredSelectorUserFromSignal.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_team", WiredSelectorUserInTeam.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_byaction", WiredSelectorUserByAction.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_byname", WiredSelectorUserByName.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_onfurni", WiredSelectorUserOnFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_handitem", WiredSelectorUserWithHanditem.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_with_var", WiredSelectorUserWithVariable.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_users_group", WiredSelectorUserInGroup.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_filter_users", WiredSelectorFilterXUser.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_filter_furni", WiredSelectorFilterXFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_filter_users_by_var", WiredSelectorFilterUserHighLow.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_filter_furni_by_var", WiredSelectorFilterFurniHighLow.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_tile_picks", WiredSelectorTilePicks.class));
+        this.interactionsList.add(new ItemInteraction("wf_slc_remote", WiredSelectorRemoteSelection.class));
+
+        // Variables
+        this.interactionsList.add(new ItemInteraction("wf_var_room", WiredVariableGlobal.class));
+        this.interactionsList.add(new ItemInteraction("wf_var_user", WiredVariableUser.class));
+        this.interactionsList.add(new ItemInteraction("wf_var_furni", WiredVariableFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_var_context", WiredVariableContext.class));
+        this.interactionsList.add(new ItemInteraction("wf_var_reference", WiredVariableFromAnotherRoom.class));
+        this.interactionsList.add(new ItemInteraction("wf_var_echo", WiredVariableEcho.class));
+
+
+        // EFFECTS
+        this.interactionsList.add(new ItemInteraction("wf_act_toggle_state", WiredEffectToggleFurniState.class));
         this.interactionsList.add(new ItemInteraction("wf_act_move_rotate", WiredEffectMoveRotateFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_give_score", WiredEffectGiveScore.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_show_message", WiredEffectWhisper.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_teleport_to", WiredEffectTeleport.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_move_rotate_user", WiredEffectMoveRotateAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_match_to_sshot", WiredEffectMatchFurniPositionState.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_teleport_to", WiredEffectTeleportToFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_show_message", WiredEffectShowMessage.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_toggle_to_rnd", WiredEffectToggleRandomState.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_call_stacks", WiredEffectExecuteStacks.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_control_clock", WiredEffectControlCounter.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_adjust_clock", WiredEffectAdjustCounterTime.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_reset_timers", WiredEffectTimerReset.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_send_signal", WiredEffectSendSignal.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_teleport_to_room", WiredEffectTeleportToRoom.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_set_altitude", WiredEffectSetFurniAltitude.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_move_to_dir", WiredEffectChangeFurniDirection.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_furni_to_furni", WiredEffectMoveFurniToFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_furni_to_user", WiredEffectMoveFurniToAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_user_to_furni", WiredEffectMoveAvatarToFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_rel_mov", WiredEffectRelativeFurniMovement.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_place_furni", WiredEffectPlaceTempFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_remove_furni", WiredEffectRemoveTempFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_move_furni_as_group", WiredEffectMoveFurniAsGroup.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_chase", WiredEffectMoveFurniTowardsAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_flee", WiredEffectMoveFurniAwayAvatar.class));
         this.interactionsList.add(new ItemInteraction("wf_act_join_team", WiredEffectJoinTeam.class));
         this.interactionsList.add(new ItemInteraction("wf_act_leave_team", WiredEffectLeaveTeam.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_chase", WiredEffectMoveFurniTowards.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_flee", WiredEffectMoveFurniAway.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_move_to_dir", WiredEffectChangeFurniDirection.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_give_score_tm", WiredEffectGiveScoreToTeam.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_toggle_to_rnd", WiredEffectToggleRandom.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_move_furni_to", WiredEffectMoveFurniTo.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_give_reward", WiredEffectGiveReward.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_call_stacks", WiredEffectTriggerStacks.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_kick_user", WiredEffectKickHabbo.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_mute_triggerer", WiredEffectMuteHabbo.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_bot_teleport", WiredEffectBotTeleport.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_bot_move", WiredEffectBotWalkToFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_bot_talk", WiredEffectBotTalk.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_give_score", WiredEffectGivePoints.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_give_score_tm", WiredEffectGivePointsToTeam.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_freeze", WiredEffectFreezeAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_unfreeze", WiredEffectUnfreezeAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_click_conf", WiredEffectSetClickConfig.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_kick_user", WiredEffectKickAvatar.class));
         this.interactionsList.add(new ItemInteraction("wf_act_bot_give_handitem", WiredEffectBotGiveHandItem.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_bot_follow_avatar", WiredEffectBotFollowHabbo.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_bot_clothes", WiredEffectBotClothes.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_bot_talk_to_avatar", WiredEffectBotTalkToHabbo.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_give_respect", WiredEffectGiveRespect.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_alert", WiredEffectAlert.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_give_handitem", WiredEffectGiveHandItem.class));
-        this.interactionsList.add(new ItemInteraction("wf_act_give_effect", WiredEffectGiveEffect.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_bot_move", WiredEffectBotWalkToFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_bot_teleport", WiredEffectBotTeleportToFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_bot_talk", WiredEffectBotTalkToRoom.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_bot_talk_to_avatar", WiredEffectBotTalkToAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_bot_follow_avatar", WiredEffectBotFollowAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_bot_clothes", WiredEffectBotChangeClothes.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_log", WiredEffectWriteLog.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_call_stacks_negative", WiredEffectExecuteStacksNegative.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_call_stacks_neg", WiredEffectExecuteStacksNegative.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_neg_call_stacks", WiredEffectExecuteStacksNegative.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_send_signal_negative", WiredEffectSendSignalNegative.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_send_signal_neg", WiredEffectSendSignalNegative.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_neg_send_signal", WiredEffectSendSignalNegative.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_neg_log", WiredEffectNotWriteLog.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_change_var_val", WiredEffectChangeVariableValue.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_give_var", WiredEffectGiveVariable.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_remove_var", WiredEffectRemoveVariable.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_give_currency", WiredEffectGiveCurrencyFromChest.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_give_currency_from_chest", WiredEffectGiveCurrencyFromChest.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_give_furni", WiredEffectGiveFurniFromChest.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_give_furni_from_chest", WiredEffectGiveFurniFromChest.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_init_transaction", WiredEffectInitiateTransaction.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_cancel_transaction", WiredEffectCancelTransaction.class));
 
-        this.interactionsList.add(new ItemInteraction("wf_cnd_has_furni_on", WiredConditionFurniHaveFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_furnis_hv_avtrs", WiredConditionFurniHaveHabbo.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_stuff_is", WiredConditionFurniTypeMatch.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_actor_in_group", WiredConditionGroupMember.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_user_count_in", WiredConditionHabboCount.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_wearing_effect", WiredConditionHabboHasEffect.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_wearing_badge", WiredConditionHabboWearsBadge.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_time_less_than", WiredConditionLessTimeElapsed.class));
+
+        // Conditions
         this.interactionsList.add(new ItemInteraction("wf_cnd_match_snapshot", WiredConditionMatchStatePosition.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_trggrer_on_frn", WiredConditionAvatarOnFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_furnis_hv_avtrs", WiredConditionFurniHasAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_has_furni_on", WiredConditionFurniHasFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_triggerer_match", WiredConditionAvatarMatches.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_actor_dir", WiredConditionAvatarDirection.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_user_performs_action", WiredConditionAvatarPerformAction.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_actor_in_group", WiredConditionAvatarInGroup.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_has_handitem", WiredConditionAvatarHasHanditem.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_counter_time_matches", WiredConditionCounterTimeMatches.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_time_less_than", WiredConditionLessTimeElapsed.class));
         this.interactionsList.add(new ItemInteraction("wf_cnd_time_more_than", WiredConditionMoreTimeElapsed.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_furni_on", WiredConditionNotFurniHaveFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_hv_avtrs", WiredConditionNotFurniHaveHabbo.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_stuff_is", WiredConditionNotFurniTypeMatch.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_user_count", WiredConditionNotHabboCount.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_wearing_fx", WiredConditionNotHabboHasEffect.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_wearing_b", WiredConditionNotHabboWearsBadge.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_in_group", WiredConditionNotInGroup.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_in_team", WiredConditionNotInTeam.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_match_snap", WiredConditionNotMatchStatePosition.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_not_trggrer_on", WiredConditionNotTriggerOnFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_actor_in_team", WiredConditionTeamMember.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_trggrer_on_frn", WiredConditionTriggerOnFurni.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_has_handitem", WiredConditionHabboHasHandItem.class));
-        this.interactionsList.add(new ItemInteraction("wf_cnd_date_rng_active", WiredConditionDateRangeActive.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_has_altitude", WiredConditionAltitudeMatches.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_stuff_is", WiredConditionFurniMatches.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_slc_quantity", WiredConditionSelectorQuantity.class));
         this.interactionsList.add(new ItemInteraction("wf_cnd_valid_moves", WiredConditionMovementValidation.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_actor_in_team", WiredConditionAvatarOnTeam.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_team_has_score", WiredConditionTeamHasScore.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_team_has_rank", WiredConditionTeamIsWinning.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_match_time", WiredConditionTimeMatches.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_match_date", WiredConditionDateMatches.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_user_count_in", WiredConditionAvatarCountInRoom.class));
+        
+
+        this.interactionsList.add(new ItemInteraction("wf_cnd_has_var", WiredConditionHasVariable.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_var_val_match", WiredConditionVariableValue.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_var_age_match", WiredConditionVariableAge.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_chest_has_items", WiredConditionChestHasItems.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_chest_has_item_type", WiredConditionChestHasFurniType.class));
+
+        
+        // Not Conditions
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_match_snap", WiredConditionNotMatchStatePosition.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_trggrer_on", WiredConditionNotAvatarOnFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_hv_avtrs", WiredConditionNotFurniHasAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_furni_on", WiredConditionNotFurniHasFurni.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_triggerer_match", WiredConditionNotAvatarMatches.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_user_performs_action", WiredConditionNotAvatarPerformAction.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_in_group", WiredConditionNotAvatarInGroup.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_has_handitem", WiredConditionNotAvatarHasHanditem.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_stuff_is", WiredConditionNotFurniMatches.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_in_team", WiredConditionNotAvatarOnTeam.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_not_user_count", WiredConditionNotAvatarCountInRoom.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_neg_has_var", WiredConditionNotHasVariable.class));
 
 
-        this.interactionsList.add(new ItemInteraction("wf_xtra_random", WiredExtraRandom.class));
-        this.interactionsList.add(new ItemInteraction("wf_xtra_unseen", WiredExtraUnseen.class));
+
+
+        // Add-ons
+        this.interactionsList.add(new ItemInteraction("wf_xtra_random", WiredExtraRandomEffect.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_unseen", WiredExtraUnseenEffect.class));
         this.interactionsList.add(new ItemInteraction("wf_blob", WiredBlob.class));
         this.interactionsList.add(new ItemInteraction("wf_xtra_or_eval", WiredExtraOrEval.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_text_output_furni_name", WiredExtraFurniNamePlaceholder.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_text_output_username", WiredExtraUserNamePlaceholder.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_text_output_variable", WiredExtraVariablePlaceholder.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_text_input_variable", WiredExtraVariableCapturer.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_var_text_connector", WiredExtraTextConnector.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_var_time_util", WiredExtraTimeUtilities.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_var_lvlup_system", WiredExtraLevelUpSystem.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_mov_curve", WiredExtraMovementCurve.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_execution_limit", WiredExtraExecutionLimit.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_mov_carry_users", WiredExtraCarryAvatar.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_mov_no_animation", WiredExtraCancelAnimation.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_anim_time", WiredExtraAnimationTime.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_exec_in_order", WiredExtraExecuteInOrder.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_mov_physics", WiredExtraMovementPhysics.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_rotate_to_dir", WiredExtraProjectile.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_scan_chest_furni_by_type", WiredExtraChestFurniTypeScanner.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_custom_contract", WiredExtraCustomContract.class));
+
 
 
         this.interactionsList.add(new ItemInteraction("wf_highscore", InteractionWiredHighscore.class));
@@ -507,6 +688,27 @@ public class ItemManager {
         return null;
     }
 
+    public HabboItem createTemporaryItem(int habboId, Item item, String extraData) {
+        if (item == null || item.getInteractionType() == null) {
+            return null;
+        }
+
+        Class<? extends HabboItem> itemClass = item.getInteractionType().getType();
+
+        if (InteractionWired.class.isAssignableFrom(itemClass)) {
+            return null;
+        }
+
+        try {
+            return itemClass
+                    .getDeclaredConstructor(int.class, int.class, Item.class, String.class, int.class, int.class)
+                    .newInstance(TEMPORARY_ITEM_ID.getAndDecrement(), habboId, item, extraData == null ? "0" : extraData, 0, 0);
+        } catch (Exception e) {
+            LOGGER.error("Failed to create temporary item for base item {}", item.getId(), e);
+            return new InteractionDefault(TEMPORARY_ITEM_ID.getAndDecrement(), habboId, item, extraData == null ? "0" : extraData, 0, 0);
+        }
+    }
+
     public void loadNewUserGifts() {
         this.newuserGifts.clear();
 
@@ -621,6 +823,36 @@ public class ItemManager {
         try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); PreparedStatement statement = connection.prepareStatement("INSERT INTO items_teleports VALUES (?, ?)")) {
             statement.setInt(1, itemOneId);
             statement.setInt(2, itemTwoId);
+            statement.execute();
+        } catch (SQLException e) {
+            LOGGER.error("Caught SQL exception", e);
+        }
+    }
+
+    public int getTeleportPairItemId(int itemId) {
+        try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); PreparedStatement statement = connection.prepareStatement("SELECT teleport_one_id, teleport_two_id FROM items_teleports WHERE teleport_one_id = ? OR teleport_two_id = ? LIMIT 1")) {
+            statement.setInt(1, itemId);
+            statement.setInt(2, itemId);
+
+            try (ResultSet set = statement.executeQuery()) {
+                if (set.next()) {
+                    int firstId = set.getInt("teleport_one_id");
+                    int secondId = set.getInt("teleport_two_id");
+
+                    return firstId == itemId ? secondId : firstId;
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("Caught SQL exception", e);
+        }
+
+        return 0;
+    }
+
+    public void deleteTeleportPair(int itemId) {
+        try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); PreparedStatement statement = connection.prepareStatement("DELETE FROM items_teleports WHERE teleport_one_id = ? OR teleport_two_id = ?")) {
+            statement.setInt(1, itemId);
+            statement.setInt(2, itemId);
             statement.execute();
         } catch (SQLException e) {
             LOGGER.error("Caught SQL exception", e);

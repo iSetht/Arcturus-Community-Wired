@@ -16,6 +16,7 @@ public class Item implements ISerialize {
     private int spriteId;
     private String name;
     private String fullName;
+    private String furniLine;
     private FurnitureType type;
     private short width;
     private short length;
@@ -29,6 +30,7 @@ public class Item implements ISerialize {
     private boolean allowMarketplace;
     private boolean allowGift;
     private boolean allowInventoryStack;
+    private int rare;
     private short stateCount;
     private short effectM;
     private short effectF;
@@ -74,6 +76,11 @@ public class Item implements ISerialize {
         this.spriteId = set.getInt("sprite_id");
         this.name = set.getString("item_name");
         this.fullName = set.getString("public_name");
+        try {
+            this.furniLine = set.getString("furniline");
+        } catch (SQLException ignored) {
+            this.furniLine = "";
+        }
         this.type = FurnitureType.fromString(set.getString("type"));
         this.width = set.getShort("width");
         this.length = set.getShort("length");
@@ -90,6 +97,11 @@ public class Item implements ISerialize {
         this.allowMarketplace = set.getBoolean("allow_marketplace_sell");
         this.allowGift = set.getBoolean("allow_gift");
         this.allowInventoryStack = set.getBoolean("allow_inventory_stack");
+        try {
+            this.rare = set.getInt("rare");
+        } catch (SQLException ignored) {
+            this.rare = 0;
+        }
 
         this.interactionType = Emulator.getGameEnvironment().getItemManager().getItemInteraction(set.getString("interaction_type").toLowerCase());
 
@@ -145,6 +157,10 @@ public class Item implements ISerialize {
         return this.fullName;
     }
 
+    public String getFurniLine() {
+        return this.furniLine == null ? "" : this.furniLine;
+    }
+
     public FurnitureType getType() {
         return this.type;
     }
@@ -195,6 +211,21 @@ public class Item implements ISerialize {
 
     public boolean allowInventoryStack() {
         return this.allowInventoryStack;
+    }
+
+    public boolean isRare() {
+        return this.rare != 0;
+    }
+
+    public boolean isRedeemableCurrency() {
+        if (this.name == null) {
+            return false;
+        }
+
+        return this.name.startsWith("CF_")
+                || this.name.startsWith("CFC_")
+                || this.name.startsWith("DF_")
+                || this.name.startsWith("PF_");
     }
 
     public int getStateCount() {

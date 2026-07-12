@@ -14,6 +14,7 @@ import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.wired.core.WiredSources;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.threading.runnables.RoomUnitGiveHanditem;
@@ -30,6 +31,8 @@ public class WiredEffectBotGiveHandItem extends InteractionWiredEffect {
 
     private String botName = "";
     private int itemId;
+    private boolean useBot;
+    private int botSource = WiredSources.SOURCE_SELECTED;
 
     public WiredEffectBotGiveHandItem(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
@@ -47,30 +50,16 @@ public class WiredEffectBotGiveHandItem extends InteractionWiredEffect {
         message.appendInt(this.getBaseItem().getSpriteId());
         message.appendInt(this.getId());
         message.appendString(this.botName);
-        message.appendInt(1);
+        message.appendInt(4);
         message.appendInt(this.itemId);
+        message.appendInt(this.useBot ? 1 : 0);
+        message.appendInt(this.botSource);
+        message.appendInt(this.getUserSource());
         message.appendInt(0);
         message.appendInt(this.getType().code);
         message.appendInt(this.getDelay());
 
-        if (this.requiresTriggeringUser()) {
-            List<Integer> invalidTriggers = new ArrayList<>();
-            room.getRoomSpecialTypes().getTriggers(this.getX(), this.getY()).forEach(new TObjectProcedure<InteractionWiredTrigger>() {
-                @Override
-                public boolean execute(InteractionWiredTrigger object) {
-                    if (!object.isTriggeredByRoomUnit()) {
-                        invalidTriggers.add(object.getBaseItem().getSpriteId());
-                    }
-                    return true;
-                }
-            });
-            message.appendInt(invalidTriggers.size());
-            for (Integer i : invalidTriggers) {
-                message.appendInt(i);
-            }
-        } else {
-            message.appendInt(0);
-        }
+        this.appendActorConflictTriggers(message, room);
     }
 
     @Override
@@ -78,6 +67,7 @@ public class WiredEffectBotGiveHandItem extends InteractionWiredEffect {
         if(settings.getIntParams().length < 1) throw new WiredSaveException("Missing item id");
 
         int itemId = settings.getIntParams()[0];
+        boolean useBot = settings.getIntParams().length > 1 && settings.getIntParams()[1] == 1;
 
         if(itemId < 0)
             itemId = 0;
@@ -90,7 +80,12 @@ public class WiredEffectBotGiveHandItem extends InteractionWiredEffect {
             throw new WiredSaveException("Delay too long");
 
         this.itemId = itemId;
-        this.botName = botName.substring(0, Math.min(botName.length(), Emulator.getConfig().getInt("hotel.wired.message.max_length", 100)));
+        this.useBot = useBot;
+        this.botName = useBot
+                ? botName.substring(0, Math.min(botName.length(), Emulator.getConfig().getInt("hotel.wired.message.max_length", 100)))
+                : "";
+        this.botSource = this.normalizeBotSource(settings.getIntParams().length > 2 ? settings.getIntParams()[2] : null);
+        this.saveUserSource(settings, 3);
         this.setDelay(delay);
 
         return true;
@@ -104,8 +99,13 @@ public class WiredEffectBotGiveHandItem extends InteractionWiredEffect {
     @Override
     public void execute(WiredContext ctx) {
         Room room = ctx.room();
-        RoomUnit roomUnit = ctx.actor().orElse(null);
+        RoomUnit roomUnit = this.resolveSourceUsers(ctx).stream().findFirst().orElse(null);
         if (roomUnit == null) return;
+
+        if (!this.useBot || this.botName.trim().isEmpty()) {
+            ctx.services().giveHandItem(room, roomUnit, this.itemId);
+            return;
+        }
 
         Habbo habbo = room.getHabbo(roomUnit);
         List<Bot> bots = room.getBots(this.botName);
@@ -141,18 +141,21 @@ public class WiredEffectBotGiveHandItem extends InteractionWiredEffect {
 
     @Override
     public String getWiredData() {
-        return WiredManager.getGson().toJson(new JsonData(this.botName, this.itemId, this.getDelay()));
+        return this.withSourceData(WiredManager.getGson().toJson(new JsonData(this.botName, this.itemId, this.useBot, this.botSource, this.getDelay())));
     }
 
     @Override
     public void loadWiredData(ResultSet set, Room room) throws SQLException {
         String wiredData = set.getString("wired_data");
+        this.loadSourceData(wiredData);
 
         if(wiredData.startsWith("{")) {
             JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
             this.itemId = data.item_id;
-            this.botName = data.bot_name;
+            this.botName = data.bot_name == null ? "" : data.bot_name;
+            this.useBot = data.use_bot || (this.botName != null && !this.botName.trim().isEmpty());
+            this.botSource = this.normalizeBotSource(data.botSource);
         }
         else {
             String[] data = wiredData.split(((char) 9) + "");
@@ -161,6 +164,8 @@ public class WiredEffectBotGiveHandItem extends InteractionWiredEffect {
                 this.setDelay(Integer.parseInt(data[0]));
                 this.itemId = Integer.parseInt(data[1]);
                 this.botName = data[2];
+                this.useBot = !this.botName.trim().isEmpty();
+                this.botSource = WiredSources.SOURCE_SELECTED;
             }
 
             this.needsUpdate(true);
@@ -171,7 +176,10 @@ public class WiredEffectBotGiveHandItem extends InteractionWiredEffect {
     public void onPickUp() {
         this.botName = "";
         this.itemId = 0;
+        this.useBot = false;
+        this.botSource = WiredSources.SOURCE_SELECTED;
         this.setDelay(0);
+        this.resetSources();
     }
 
     @Override
@@ -179,14 +187,22 @@ public class WiredEffectBotGiveHandItem extends InteractionWiredEffect {
         return true;
     }
 
+    private int normalizeBotSource(Integer source) {
+        return WiredSources.normalizeSource(source, WiredSources.SOURCE_SELECTED, WiredSources.SOURCE_SELECTOR, WiredSources.SOURCE_SIGNAL, WiredSources.SOURCE_TRIGGER, WiredSources.SOURCE_CLICKED_USER);
+    }
+
     static class JsonData {
         String bot_name;
         int item_id;
+        boolean use_bot;
+        Integer botSource;
         int delay;
 
-        public JsonData(String bot_name, int item_id, int delay) {
+        public JsonData(String bot_name, int item_id, boolean use_bot, int botSource, int delay) {
             this.bot_name = bot_name;
             this.item_id = item_id;
+            this.use_bot = use_bot;
+            this.botSource = botSource;
             this.delay = delay;
         }
     }

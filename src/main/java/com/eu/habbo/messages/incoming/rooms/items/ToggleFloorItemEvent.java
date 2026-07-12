@@ -1,6 +1,8 @@
 package com.eu.habbo.messages.incoming.rooms.items;
 
 import com.eu.habbo.Emulator;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredSignalAntenna;
 import com.eu.habbo.habbohotel.items.interactions.InteractionDice;
 import com.eu.habbo.habbohotel.items.interactions.pets.InteractionMonsterPlantSeed;
 import com.eu.habbo.habbohotel.pets.MonsterplantPet;
@@ -17,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 
 public class ToggleFloorItemEvent extends MessageHandler {
@@ -39,6 +42,12 @@ public class ToggleFloorItemEvent extends MessageHandler {
 
             if (item == null || item instanceof InteractionDice)
                 return;
+
+            WiredManager.triggerUserClicks(room, this.client.getHabbo().getRoomUnit(), item);
+
+            if (WiredSignalAntenna.isAntenna(item)) {
+                WiredManager.triggerReceiveSignal(room, this.client.getHabbo().getRoomUnit(), item, Collections.emptyList(), Collections.emptyList());
+            }
 
             Event furnitureToggleEvent = new FurnitureToggleEvent(item, this.client.getHabbo(), state);
             Emulator.getPluginManager().fireEvent(furnitureToggleEvent);

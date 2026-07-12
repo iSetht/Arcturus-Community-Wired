@@ -6,6 +6,7 @@ import static com.eu.habbo.habbohotel.rooms.pathfinding.impl.Rotation.DIAGONAL_D
 import static com.eu.habbo.habbohotel.rooms.pathfinding.impl.Rotation.DIRECTIONS;
 import static com.eu.habbo.habbohotel.rooms.pathfinding.impl.TileValidator.isOutOfBounds;
 
+import com.eu.habbo.habbohotel.rooms.RoomLayout;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomTileState;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
@@ -81,7 +82,7 @@ public class AdjacentTileFinder {
   private static void addAdjacent(RoomTile node, RoomTile nextTile, RoomUnit unit, RoomTile temp,
       Set<RoomTile> adj, boolean isDiagonal) {
     if (temp != null && (temp.getState() != RoomTileState.SIT
-        || nextTile.getStackHeight() - node.getStackHeight() <= 2.0) && canWalkOn(temp, unit)) {
+        || nextTile.getStackHeight() - node.getStackHeight() <= RoomLayout.MAXIMUM_STEP_HEIGHT) && canWalkOn(temp, unit)) {
       temp.isDiagonally(isDiagonal);
       adj.add(temp);
     }

@@ -21,6 +21,12 @@ import java.util.List;
 
 public class InteractionWiredHighscore extends HabboItem {
     private static final Logger LOGGER = LoggerFactory.getLogger(InteractionWiredHighscore.class);
+    private static final int STATE_OFF = 0;
+    private static final int STATE_LIST = 1;
+    private static final int STATE_PODIUM = 2;
+    private static final int REQUEST_LIST_VIEW = 101;
+    private static final int REQUEST_PODIUM_VIEW = 102;
+    private static final int REQUEST_DELETE_ROW_BASE = 200;
 
     public WiredHighscoreScoreType scoreType;
     public WiredHighscoreClearType clearType;
@@ -88,8 +94,28 @@ public class InteractionWiredHighscore extends HabboItem {
         }
 
         try {
-            int state = Integer.parseInt(this.getExtradata());
-            this.setExtradata(Math.abs(state - 1) + "");
+            int currentState = Integer.parseInt(this.getExtradata());
+            int requestedState = (objects.length > 0 && objects[0] instanceof Integer) ? (Integer) objects[0] : STATE_OFF;
+
+            if (requestedState == REQUEST_LIST_VIEW || requestedState == REQUEST_PODIUM_VIEW) {
+                this.setExtradata((requestedState == REQUEST_PODIUM_VIEW ? STATE_PODIUM : STATE_LIST) + "");
+                room.updateItem(this);
+                return;
+            }
+
+            if (requestedState >= REQUEST_DELETE_ROW_BASE) {
+                int rowIndex = requestedState - REQUEST_DELETE_ROW_BASE;
+                boolean deleted = Emulator.getGameEnvironment().getItemManager().getHighscoreManager().deleteHighscoreRowForItem(this.getId(), this.clearType, this.scoreType, rowIndex);
+
+                if (deleted) {
+                    this.reloadData();
+                    room.updateItem(this);
+                }
+
+                return;
+            }
+
+            this.setExtradata((currentState == STATE_OFF ? STATE_LIST : STATE_OFF) + "");
             room.updateItem(this);
         } catch (Exception e) {
             LOGGER.error("Caught exception", e);
@@ -120,9 +146,15 @@ public class InteractionWiredHighscore extends HabboItem {
                 if(count < 50) {
                     serverMessage.appendInt(row.getValue());
 
-                    serverMessage.appendInt(row.getUsers().size());
-                    for (String username : row.getUsers()) {
-                        serverMessage.appendString(username);
+                    List<String> users = row.getUsers();
+                    List<String> looks = row.getLooks();
+                    List<Integer> userIds = row.getUserIds();
+
+                    serverMessage.appendInt(users.size());
+                    for (int i = 0; i < users.size(); i++) {
+                        serverMessage.appendString(users.get(i));
+                        serverMessage.appendString(i < looks.size() ? looks.get(i) : "");
+                        serverMessage.appendInt(i < userIds.size() ? userIds.get(i) : 0);
                     }
                 }
                 count++;

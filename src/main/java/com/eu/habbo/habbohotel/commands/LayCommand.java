@@ -2,9 +2,13 @@ package com.eu.habbo.habbohotel.commands;
 
 import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.gameclients.GameClient;
+import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnitStatus;
+import com.eu.habbo.habbohotel.rooms.RoomUserAction;
 import com.eu.habbo.habbohotel.rooms.RoomUserRotation;
+import com.eu.habbo.habbohotel.users.Habbo;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserStatusComposer;
 
 public class LayCommand extends Command {
@@ -23,6 +27,8 @@ public class LayCommand extends Command {
         gameClient.getHabbo().getRoomUnit().setBodyRotation(RoomUserRotation.values()[gameClient.getHabbo().getRoomUnit().getBodyRotation().getValue() - gameClient.getHabbo().getRoomUnit().getBodyRotation().getValue() % 2]);
 
         RoomTile tile = gameClient.getHabbo().getRoomUnit().getCurrentLocation();
+        Room room = gameClient.getHabbo().getHabboInfo().getCurrentRoom();
+        Habbo habbo = gameClient.getHabbo();
         if (tile == null) {
             return false;
         }
@@ -36,6 +42,7 @@ public class LayCommand extends Command {
 
         gameClient.getHabbo().getRoomUnit().setStatus(RoomUnitStatus.LAY, 0.5 + "");
         gameClient.getHabbo().getHabboInfo().getCurrentRoom().sendComposer(new RoomUserStatusComposer(gameClient.getHabbo().getRoomUnit()).compose());
+        WiredManager.triggerUserPerformAction(room, habbo.getRoomUnit(), RoomUserAction.LAY.getAction());
         return true;
     }
 }

@@ -1,21 +1,33 @@
 package com.eu.habbo.habbohotel.items.interactions;
 
 import com.eu.habbo.Emulator;
+import com.google.gson.JsonObject;
 import com.eu.habbo.habbohotel.gameclients.GameClient;
 import com.eu.habbo.habbohotel.items.Item;
+import com.eu.habbo.habbohotel.items.interactions.wired.selectors.WiredSelectorTilePicks;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
 import com.eu.habbo.habbohotel.rooms.Room;
+import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
+import com.eu.habbo.habbohotel.wired.WiredTriggerType;
 import com.eu.habbo.habbohotel.wired.api.IWiredEffect;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredSources;
+import com.eu.habbo.habbohotel.wired.core.WiredTriggerSourceResolver;
+import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.wired.WiredEffectDataComposer;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -56,6 +68,8 @@ public abstract class InteractionWiredEffect extends InteractionWired implements
     public static final long COOLDOWN_TELEPORT = 500L;
     
     private int delay;
+    private int furniSource = WiredSources.SOURCE_SELECTED;
+    private int userSource = WiredSources.SOURCE_TRIGGER;
 
     public InteractionWiredEffect(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
@@ -78,8 +92,8 @@ public abstract class InteractionWiredEffect extends InteractionWired implements
     @Override
     public void onClick(GameClient client, Room room, Object[] objects) throws Exception {
         if (client != null) {
-            if (room.hasRights(client.getHabbo())) {
-                client.sendResponse(new WiredEffectDataComposer(this, room));
+            if (room.canInspectWired(client.getHabbo())) {
+                client.sendResponse(new WiredEffectDataComposer(this, room, client.getHabbo()));
                 this.activateBox(room);
             }
         }
@@ -93,6 +107,221 @@ public abstract class InteractionWiredEffect extends InteractionWired implements
 
     protected void setDelay(int value) {
         this.delay = value;
+    }
+
+    public int getFurniSource() {
+        return this.furniSource;
+    }
+
+    protected void setFurniSource(Integer source) {
+        this.furniSource = WiredSources.normalizeSource(source);
+    }
+
+    protected void setFurniSource(Integer source, int... allowedExtraSources) {
+        this.furniSource = WiredSources.normalizeSource(source, WiredSources.SOURCE_SELECTED, withSignalSource(allowedExtraSources));
+    }
+
+    public int getUserSource() {
+        return this.userSource;
+    }
+
+    protected void setUserSource(Integer source) {
+        this.userSource = WiredSources.normalizeSource(source, WiredSources.SOURCE_TRIGGER, WiredSources.SOURCE_SELECTED, WiredSources.SOURCE_SELECTOR, WiredSources.SOURCE_CLICKED_USER, WiredSources.SOURCE_SIGNAL);
+    }
+
+    protected void resetSources() {
+        this.furniSource = WiredSources.SOURCE_SELECTED;
+        this.userSource = WiredSources.SOURCE_TRIGGER;
+    }
+
+    protected String withSourceData(String wiredData) {
+        try {
+            JsonObject json = WiredManager.getGson().fromJson(wiredData, JsonObject.class);
+
+            if (json != null) {
+                json.addProperty("furniSource", this.furniSource);
+                json.addProperty("userSource", this.userSource);
+                return WiredManager.getGson().toJson(json);
+            }
+        } catch (Exception ignored) {
+
+        }
+
+        return wiredData;
+    }
+
+    protected void loadSourceData(String wiredData) {
+        this.loadSourceData(wiredData, WiredSources.SOURCE_SELECTOR);
+    }
+
+    protected void loadSourceData(String wiredData, int... allowedFurniSources) {
+        this.resetSources();
+
+        if (wiredData == null || !wiredData.startsWith("{")) {
+            return;
+        }
+
+        try {
+            JsonObject json = WiredManager.getGson().fromJson(wiredData, JsonObject.class);
+
+            if (json == null) {
+                return;
+            }
+
+            if (json.has("furniSource") && !json.get("furniSource").isJsonNull()) {
+                this.setFurniSource(json.get("furniSource").getAsInt(), allowedFurniSources);
+            }
+
+            if (json.has("userSource") && !json.get("userSource").isJsonNull()) {
+                this.setUserSource(json.get("userSource").getAsInt());
+            }
+        } catch (Exception ignored) {
+
+        }
+    }
+
+    protected void saveFurniSource(WiredSettings settings, int offset) {
+        int[] intParams = settings.getIntParams();
+
+        if (intParams != null && intParams.length > offset) {
+            this.setFurniSource(intParams[offset]);
+        }
+    }
+
+    protected void saveFurniSource(WiredSettings settings, int offset, int... allowedExtraSources) {
+        int[] intParams = settings.getIntParams();
+
+        if (intParams != null && intParams.length > offset) {
+            this.setFurniSource(intParams[offset], allowedExtraSources);
+        }
+    }
+
+    private static int[] withSignalSource(int... allowedSources) {
+        if (allowedSources == null || allowedSources.length == 0) {
+            return new int[] { WiredSources.SOURCE_SIGNAL };
+        }
+
+        for (int allowedSource : allowedSources) {
+            if (allowedSource == WiredSources.SOURCE_SIGNAL) {
+                return allowedSources;
+            }
+        }
+
+        int[] result = new int[allowedSources.length + 1];
+        System.arraycopy(allowedSources, 0, result, 0, allowedSources.length);
+        result[allowedSources.length] = WiredSources.SOURCE_SIGNAL;
+        return result;
+    }
+
+    protected void saveUserSource(WiredSettings settings, int offset) {
+        int[] intParams = settings.getIntParams();
+
+        if (intParams != null && intParams.length > offset) {
+            this.setUserSource(intParams[offset]);
+        }
+    }
+
+    protected List<HabboItem> resolveSourceItems(WiredContext ctx, Collection<HabboItem> selectedItems) {
+        if (ctx == null) {
+            return selectedItems != null ? new ArrayList<>(selectedItems) : new ArrayList<>();
+        }
+
+        return WiredTriggerSourceResolver.resolveItems(this, ctx.event(), this.furniSource, selectedItems);
+    }
+
+    protected boolean hasTilePicksSelector(Room room) {
+        if (room == null || room.getRoomSpecialTypes() == null) {
+            return false;
+        }
+
+        for (InteractionWiredSelector selector : room.getRoomSpecialTypes().getSelectors(this.getX(), this.getY())) {
+            if (selector instanceof WiredSelectorTilePicks) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected List<RoomTile> resolveTilePicks(Room room) {
+        if (room == null || room.getRoomSpecialTypes() == null) {
+            return new ArrayList<>();
+        }
+
+        Set<RoomTile> tiles = new LinkedHashSet<>();
+
+        for (InteractionWiredSelector selector : room.getRoomSpecialTypes().getSelectors(this.getX(), this.getY())) {
+            if (selector instanceof WiredSelectorTilePicks) {
+                tiles.addAll(((WiredSelectorTilePicks) selector).getSelectedTiles());
+            }
+        }
+
+        return new ArrayList<>(tiles);
+    }
+
+    protected List<RoomUnit> resolveSourceUsers(WiredContext ctx) {
+        return this.resolveSourceUsers(ctx, null);
+    }
+
+    protected List<RoomUnit> resolveSourceUsers(WiredContext ctx, Collection<RoomUnit> selectedUsers) {
+        if (ctx == null) {
+            return selectedUsers != null ? new ArrayList<>(selectedUsers) : new ArrayList<>();
+        }
+
+        return WiredTriggerSourceResolver.resolveUsers(this, ctx.event(), this.userSource, selectedUsers);
+    }
+
+    protected boolean hasClickedAvatarTrigger(Room room) {
+        if (room == null || room.getRoomSpecialTypes() == null) {
+            return false;
+        }
+
+        for (InteractionWiredTrigger trigger : room.getRoomSpecialTypes().getTriggers(this.getX(), this.getY())) {
+            if (trigger.getType() == WiredTriggerType.CLICK_AVATAR) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected boolean hasClickedTileTrigger(Room room) {
+        if (room == null || room.getRoomSpecialTypes() == null) {
+            return false;
+        }
+
+        for (InteractionWiredTrigger trigger : room.getRoomSpecialTypes().getTriggers(this.getX(), this.getY())) {
+            if (trigger.getType() == WiredTriggerType.CLICK_TILE) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected void appendActorConflictTriggers(ServerMessage message, Room room) {
+        List<Integer> triggers = new ArrayList<>();
+
+        if (this.requiresActor() && room != null && room.getRoomSpecialTypes() != null) {
+            room.getRoomSpecialTypes().getTriggers(this.getX(), this.getY()).forEach(new gnu.trove.procedure.TObjectProcedure<InteractionWiredTrigger>() {
+                @Override
+                public boolean execute(InteractionWiredTrigger object) {
+                    if (!object.isTriggeredByRoomUnit()) {
+                        triggers.add(object.getBaseItem().getSpriteId());
+                    }
+                    return true;
+                }
+            });
+        }
+
+        if (this.hasClickedAvatarTrigger(room) && !triggers.contains(WiredTriggerType.CLICK_AVATAR.code)) {
+            triggers.add(WiredTriggerType.CLICK_AVATAR.code);
+        }
+
+        message.appendInt(triggers.size());
+        for (Integer trigger : triggers) {
+            message.appendInt(trigger);
+        }
     }
 
     public abstract WiredEffectType getType();
@@ -110,10 +339,16 @@ public abstract class InteractionWiredEffect extends InteractionWired implements
     
     /**
      * Returns whether this effect requires an actor (user) to execute.
+     * <p>
+     * An effect that "requires a triggering user" but is configured to resolve its
+     * users from a selector (SOURCE_SELECTOR) or explicit selection (SOURCE_SELECTED)
+     * does NOT need an event actor; it can operate without one. We only block
+     * execution if the user source is SOURCE_TRIGGER and no actor is present.
+     * </p>
      */
     @Override
     public boolean requiresActor() {
-        return requiresTriggeringUser();
+        return requiresTriggeringUser() && this.userSource == WiredSources.SOURCE_TRIGGER;
     }
 
     /**

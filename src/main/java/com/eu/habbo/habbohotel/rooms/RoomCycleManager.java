@@ -5,6 +5,7 @@ import com.eu.habbo.habbohotel.achievements.AchievementManager;
 import com.eu.habbo.habbohotel.bots.Bot;
 import com.eu.habbo.habbohotel.items.ICycleable;
 import com.eu.habbo.habbohotel.items.Item;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraCarryAvatar;
 import com.eu.habbo.habbohotel.pets.Pet;
 import com.eu.habbo.habbohotel.users.DanceType;
 import com.eu.habbo.habbohotel.users.Habbo;
@@ -38,6 +39,8 @@ public class RoomCycleManager {
     private final Room room;
     private boolean cycleOdd;
     private long cycleTimestamp;
+    private long cycleId;
+    private boolean cycling;
     private int idleCycles;
     private int idleHostingCycles;
     private long rollerCycle = System.currentTimeMillis();
@@ -46,6 +49,8 @@ public class RoomCycleManager {
         this.room = room;
         this.cycleOdd = false;
         this.cycleTimestamp = 0;
+        this.cycleId = 0;
+        this.cycling = false;
         this.idleCycles = 0;
         this.idleHostingCycles = 0;
     }
@@ -55,6 +60,20 @@ public class RoomCycleManager {
      */
     public long getCycleTimestamp() {
         return this.cycleTimestamp;
+    }
+
+    /**
+     * Gets the current room movement cycle id.
+     */
+    public long getCycleId() {
+        return this.cycleId;
+    }
+
+    /**
+     * Returns true while this room is processing its 500ms movement cycle.
+     */
+    public boolean isCycling() {
+        return this.cycling;
     }
 
     /**
@@ -71,6 +90,8 @@ public class RoomCycleManager {
     public void cycle() {
         this.cycleOdd = !this.cycleOdd;
         this.cycleTimestamp = System.currentTimeMillis();
+        this.cycleId++;
+        this.cycling = true;
         final boolean[] foundRightHolder = {false};
 
         boolean loaded = this.room.isLoaded();
@@ -122,9 +143,12 @@ public class RoomCycleManager {
                 processRollers(updatedUnit);
 
                 // Send status updates
+                updatedUnit.removeIf(WiredExtraCarryAvatar::shouldSuppressCycleStatus);
                 if (!updatedUnit.isEmpty()) {
                     this.room.sendComposer(new RoomUserStatusComposer(updatedUnit, true).compose());
                 }
+
+                processPostCycleTasks();
 
                 // Cycle trax manager
                 if (this.room.getTraxManager() != null) {
@@ -145,6 +169,7 @@ public class RoomCycleManager {
 
         // Send scheduled composers
         processScheduledComposers();
+        this.cycling = false;
     }
 
     /**
@@ -239,10 +264,11 @@ public class RoomCycleManager {
                     boolean danceIsNone = (habbo.getRoomUnit().getDanceType() == DanceType.NONE);
                     if (danceIsNone) {
                         this.room.sendComposer(new RoomUnitIdleComposer(habbo.getRoomUnit()).compose());
+                        WiredManager.triggerUserPerformAction(this.room, habbo.getRoomUnit(), RoomUserAction.IDLE.getAction());
                     }
                     if (danceIsNone && !Emulator.getConfig()
                             .getBoolean("hotel.roomuser.idle.not_dancing.ignore.wired_idle")) {
-                        WiredManager.triggerUserIdles(this.room, habbo.getRoomUnit());
+                        // WiredManager.triggerUserIdles(this.room, habbo.getRoomUnit());
                     }
                 }
             } else {
@@ -410,6 +436,34 @@ public class RoomCycleManager {
     }
 
     /**
+     * Processes tasks that must run after the room's natural status packet for this cycle.
+     */
+    private void processPostCycleTasks() {
+        if (!this.room.postCycleTasks.isEmpty()) {
+            Set<Runnable> tasks = this.room.postCycleTasks;
+            this.room.postCycleTasks = ConcurrentHashMap.newKeySet();
+
+            this.room.beginComposerBatch();
+            this.room.getTileManager().beginUpdateBatch();
+            try {
+                for (Runnable runnable : tasks) {
+                    try {
+                        runnable.run();
+                    } catch (Exception e) {
+                        LOGGER.error("Caught exception", e);
+                    }
+                }
+            } finally {
+                try {
+                    this.room.getTileManager().endUpdateBatch();
+                } finally {
+                    this.room.endComposerBatch();
+                }
+            }
+        }
+    }
+
+    /**
      * Cycles a room unit (handles movement, sitting, laying, etc.)
      * @param unit The room unit to cycle
      * @param type The type of room unit
@@ -423,6 +477,29 @@ public class RoomCycleManager {
             unit.removeStatus(RoomUnitStatus.SIGN);
         }
 
+        WiredExtraCarryAvatar.CarryCycleResult carryCycleResult = WiredExtraCarryAvatar.processCarryCycle(this.room, unit);
+        if (carryCycleResult == WiredExtraCarryAvatar.CarryCycleResult.HOLD
+                || carryCycleResult == WiredExtraCarryAvatar.CarryCycleResult.CONSUMED) {
+            return false;
+        }
+
+        RoomUnitMovementEngine.DeferredWalkResult deferredWalkResult = RoomUnitMovementEngine.processDeferredWiredGlideWalk(this.room, unit, this.cycleTimestamp);
+        if (deferredWalkResult == RoomUnitMovementEngine.DeferredWalkResult.WAITING) {
+            return false;
+        }
+        if (deferredWalkResult == RoomUnitMovementEngine.DeferredWalkResult.APPLIED) {
+            return false;
+        }
+
+        if (RoomUnitMovementEngine.shouldHoldForActiveWiredAvatarGlide(this.room, unit)) {
+            return false;
+        }
+        RoomUnitMovementEngine.retireLandedWiredAvatarGlide(this.room, unit);
+
+        if (RoomUnitMovementEngine.consumeNaturalWalkSkip(this.room, unit)) {
+            return false;
+        }
+
         if (unit.isWalking() && unit.getPath() != null && !unit.getPath().isEmpty()) {
             if (!unit.cycle(this.room)) {
                 return true;
@@ -433,7 +510,9 @@ public class RoomCycleManager {
                 update = true;
             }
 
-            if (!unit.isWalking() && !unit.cmdSit) {
+            boolean postureRolling = RoomRollerManager.isPostureRolling(unit);
+
+            if (!postureRolling && !unit.isWalking() && !unit.cmdSit) {
                 // Don't override special pet statuses with SIT
                 boolean hasSpecialPetStatus = unit.hasStatus(RoomUnitStatus.HANG) 
                     || unit.hasStatus(RoomUnitStatus.SWING) 
@@ -452,6 +531,7 @@ public class RoomCycleManager {
                         || unit.sitUpdate)) {
                     this.room.dance(unit, DanceType.NONE);
                     unit.setStatus(RoomUnitStatus.SIT, (Item.getCurrentHeight(topItem) * 1.0D) + "");
+                    WiredManager.triggerUserPerformAction(room, unit, RoomUserAction.SIT.getAction());
                     unit.setZ(topItem.getZ());
                     unit.setRotation(RoomUserRotation.values()[topItem.getRotation()]);
                     unit.sitUpdate = false;
@@ -460,7 +540,7 @@ public class RoomCycleManager {
             }
         }
 
-        if (!unit.isWalking() && !unit.cmdLay) {
+        if (!RoomRollerManager.isPostureRolling(unit) && !unit.isWalking() && !unit.cmdLay) {
             HabboItem topItem = this.room.getTopItemAt(unit.getX(), unit.getY());
 
             if (topItem == null || !topItem.getBaseItem().allowLay()) {

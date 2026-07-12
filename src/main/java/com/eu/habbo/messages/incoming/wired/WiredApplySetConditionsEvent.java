@@ -1,6 +1,7 @@
 package com.eu.habbo.messages.incoming.wired;
 
 import com.eu.habbo.habbohotel.items.interactions.wired.interfaces.InteractionWiredMatchFurniSettings;
+import com.eu.habbo.habbohotel.items.interactions.wired.triggers.WiredTriggerFurniStateChange;
 import com.eu.habbo.habbohotel.rooms.FurnitureMovementError;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
@@ -40,11 +41,12 @@ public class WiredApplySetConditionsEvent extends MessageHandler {
         if (room != null) {
 
             // Executing Habbo should be able to edit wireds
-            if (room.hasRights(this.client.getHabbo()) || room.isOwner(this.client.getHabbo())) {
+            if (room.canModifyWired(this.client.getHabbo())) {
 
                 List<HabboItem> wireds = new ArrayList<>();
                 wireds.addAll(room.getRoomSpecialTypes().getConditions());
                 wireds.addAll(room.getRoomSpecialTypes().getEffects());
+                wireds.addAll(room.getRoomSpecialTypes().getTriggers());
 
                 // Find the item with the given ID in the room
                 Optional<HabboItem> item = wireds.stream()
@@ -63,6 +65,9 @@ public class WiredApplySetConditionsEvent extends MessageHandler {
                         // Try to apply the set settings to each item
                         wired.getMatchFurniSettings().forEach(setting -> {
                             HabboItem matchItem = room.getHabboItem(setting.item_id);
+                            if (matchItem == null) {
+                                return;
+                            }
 
                             // Match state
                             if (wired.shouldMatchState() && matchItem.allowWiredResetState()) {
@@ -82,19 +87,46 @@ public class WiredApplySetConditionsEvent extends MessageHandler {
                                 }
                             }
                             else if(wired.shouldMatchPosition()) {
-                                boolean slideAnimation = !wired.shouldMatchRotation() || matchItem.getRotation() == setting.rotation;
                                 RoomTile newLocation = room.getLayout().getTile((short) setting.x, (short) setting.y);
                                 int newRotation = wired.shouldMatchRotation() ? setting.rotation : matchItem.getRotation();
+                                boolean rotateBeforeMove = wired.shouldMatchRotation() && matchItem.getRotation() != newRotation;
 
                                 if(newLocation != null && newLocation.state != RoomTileState.INVALID && (newLocation != oldLocation || newRotation != matchItem.getRotation()) && room.furnitureFitsAt(newLocation, matchItem, newRotation, true) == FurnitureMovementError.NONE) {
-                                    if(room.moveFurniTo(matchItem, newLocation, newRotation, null, !slideAnimation) == FurnitureMovementError.NONE) {
-                                        if(slideAnimation) {
-                                            room.sendComposer(new FloorItemOnRollerComposer(matchItem, null, oldLocation, oldZ, newLocation, matchItem.getZ(), 0, room).compose());
+                                    if (rotateBeforeMove && room.furnitureFitsAt(oldLocation, matchItem, newRotation, false) != FurnitureMovementError.NONE) {
+                                        return;
+                                    }
+
+                                    if (rotateBeforeMove) {
+                                        room.moveFurniTo(matchItem, oldLocation, newRotation, null, true);
+                                        if (newLocation == oldLocation) {
+                                            if (wired.shouldMatchAltitude() && Double.compare(matchItem.getZ(), setting.z) != 0) {
+                                                matchItem.setZ(setting.z);
+                                                matchItem.needsUpdate(true);
+                                                room.updateItem(matchItem);
+                                            }
+                                            return;
                                         }
+                                    }
+
+                                    if(room.moveFurniTo(matchItem, newLocation, newRotation, null, false) == FurnitureMovementError.NONE) {
+                                        if (wired.shouldMatchAltitude() && Double.compare(matchItem.getZ(), setting.z) != 0) {
+                                            matchItem.setZ(setting.z);
+                                            matchItem.needsUpdate(true);
+                                        }
+
+                                        room.sendComposer(new FloorItemOnRollerComposer(matchItem, null, oldLocation, oldZ, newLocation, matchItem.getZ(), 0, room).compose());
                                     }
                                 }
                             }
+                            if (!wired.shouldMatchPosition() && wired.shouldMatchAltitude() && Double.compare(matchItem.getZ(), setting.z) != 0) {
+                                matchItem.setZ(setting.z);
+                                matchItem.needsUpdate(true);
+                                room.updateItem(matchItem);
+                            }
                         });
+                    } else if (wiredItem instanceof WiredTriggerFurniStateChange){
+                        WiredTriggerFurniStateChange wired = (WiredTriggerFurniStateChange) wiredItem;
+                        wired.applyStoredStates(room);
                     }
                 }
             }

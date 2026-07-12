@@ -3,12 +3,18 @@ package com.eu.habbo.messages.incoming.rooms.users;
 import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.pets.PetTasks;
 import com.eu.habbo.habbohotel.rooms.Room;
+import com.eu.habbo.habbohotel.rooms.RoomRollerManager;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
+import com.eu.habbo.habbohotel.rooms.RoomUnitMovementEngine;
 import com.eu.habbo.habbohotel.rooms.RoomUnitStatus;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboInfo;
 import com.eu.habbo.habbohotel.users.HabboItem;
+import com.eu.habbo.habbohotel.items.interactions.InteractionOneWayGate;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraCarryAvatar;
+import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectMoveAvatarToFurni;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.incoming.MessageHandler;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUnitOnRollerComposer;
 import com.eu.habbo.plugin.events.users.UserIdleEvent;
@@ -43,6 +49,23 @@ public class RoomUserWalkEvent extends MessageHandler {
     RoomUnit roomUnit = habbo.getRoomUnit();
     HabboInfo habboInfo = habbo.getHabboInfo();
     Room room = habboInfo.getCurrentRoom();
+    RoomTile clickedTile = room.getLayout().getTile((short) x, (short) y);
+
+    final THashSet<HabboItem> grabbedItemsOnTile = room.getItemsAt(clickedTile);
+
+    boolean firedFromInvisTile = false;
+    for (HabboItem items : grabbedItemsOnTile) {
+        if (items.getBaseItem().getName().equalsIgnoreCase("room_invisible_click_tile")) {
+            WiredManager.triggerUserClicksTile(room, roomUnit, items);
+            firedFromInvisTile = true;
+        }
+    }
+
+    // If no invisible click tile was found, fire a bare-tile click so TilePicks selectors
+    // can match without requiring any physical furni on the target tile.
+    if (!firedFromInvisTile) {
+        WiredManager.triggerUserClicksTileByCoords(room, roomUnit, (short) x, (short) y);
+    }
 
     try {
       if (roomUnit != null && roomUnit.isInRoom() && roomUnit.canWalk()) {
@@ -107,15 +130,101 @@ public class RoomUserWalkEvent extends MessageHandler {
 
         // This is where we set the end location and begin finding a path
         if (tile.isWalkable() || room.canSitOrLayAt(tile.x, tile.y)) {
-          if (roomUnit.getMoveBlockingTask() != null) {
-            roomUnit.getMoveBlockingTask().get();
+          interruptRecentRollerSlide(roomUnit);
+          roomUnit.clearWiredWalkStartItemStates();
+          roomUnit.captureWiredWalkStartItemStates(tile, true);
+          addTemporaryOpenFurniOverrides(room, roomUnit);
+          InteractionOneWayGate.rememberManualWalkClick(roomUnit, tile);
+          if (InteractionOneWayGate.cancelPendingEntryForManualWalk(room, roomUnit, tile)) {
+            return;
           }
 
-          roomUnit.setGoalLocation(tile);
+          if (InteractionOneWayGate.getPendingExitTile(roomUnit) != null) {
+            if (InteractionOneWayGate.isUnitOnTransitGate(roomUnit)) {
+              InteractionOneWayGate.queueManualWalkDuringTransit(roomUnit, tile);
+              return;
+            }
+            InteractionOneWayGate.cancelPendingExit(room, roomUnit);
+          }
+
+          if (WiredExtraCarryAvatar.requestDetach(room, roomUnit, tile)) {
+            return;
+          }
+
+          if (!RoomUnitMovementEngine.applyOrQueueWalkAfterActiveWiredGlide(room, roomUnit, tile)) {
+            applyWalkGoal(room, roomUnit, tile);
+          }
         }
       }
     } catch (Exception e) {
       LOGGER.error("Caught exception", e);
+    }
+  }
+
+  private static void interruptRecentRollerSlide(RoomUnit roomUnit) {
+    if (roomUnit == null || roomUnit.canBeRolled()) {
+      return;
+    }
+
+    // A wired carry/forced glide is in flight: the click is queued by
+    // applyOrQueueWalkAfterActiveWiredGlide and applied at the glide's landing tile.
+    // Snapping back to a (possibly stale) roller origin here caused mid-carry
+    // teleports and frozen avatars.
+    if (RoomUnitMovementEngine.hasActiveWiredAvatarGlide(roomUnit)) {
+      return;
+    }
+
+    RoomTile rollerOrigin = roomUnit.getLastRollerLocation();
+    if (rollerOrigin == null || roomUnit.getCurrentLocation() == rollerOrigin) {
+      return;
+    }
+
+    roomUnit.setPath(new java.util.LinkedList<>());
+    roomUnit.removeStatus(RoomUnitStatus.MOVE);
+    roomUnit.setLocation(rollerOrigin);
+    roomUnit.setZ(rollerOrigin.getStackHeight());
+    roomUnit.setPreviousLocationZ(rollerOrigin.getStackHeight());
+    roomUnit.clearRecentRollerMovement();
+    RoomRollerManager.clearPostureRolling(roomUnit);
+  }
+
+  private static void applyWalkGoal(Room room, RoomUnit roomUnit, RoomTile tile) {
+    try {
+      if (roomUnit.getMoveBlockingTask() != null) {
+        roomUnit.getMoveBlockingTask().get();
+      }
+
+      roomUnit.setGoalLocation(tile);
+      if (roomUnit.getGoal() != null && roomUnit.getGoal().equals(tile) && roomUnit.getPath() != null && !roomUnit.getPath().isEmpty()) {
+        roomUnit.getCacheable().put(WiredEffectMoveAvatarToFurni.CACHE_LAST_VALID_WALK_GOAL, tile);
+      }
+    } catch (Exception e) {
+      LOGGER.error("Caught exception", e);
+    }
+  }
+
+  private static void addTemporaryOpenFurniOverrides(Room room, RoomUnit roomUnit) {
+    if (room == null || room.getLayout() == null || roomUnit == null) {
+      return;
+    }
+
+    for (HabboItem item : room.getFloorItems()) {
+      if (item == null || !item.isWalkable() || item.getBaseItem().allowWalk()) {
+        continue;
+      }
+
+      // A one-way gate is only "open" for the transit of the user entering it; it must
+      // never become a generic 750ms path override. That override outlived the entry
+      // cancel (which seals the gate) and let the freshly computed path walk straight
+      // through the visually closed gate. Gate entry pathing is handled by the explicit
+      // override the gate itself grants in onClick.
+      if (item instanceof InteractionOneWayGate) {
+        continue;
+      }
+
+      for (RoomTile tile : item.getOccupyingTiles(room.getLayout())) {
+        roomUnit.addTemporaryOverrideTile(tile, 750L);
+      }
     }
   }
 

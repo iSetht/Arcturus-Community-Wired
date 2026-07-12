@@ -23,7 +23,9 @@ import com.eu.habbo.habbohotel.items.interactions.pets.InteractionPetTree;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredConditionType;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
+import com.eu.habbo.habbohotel.wired.WiredSelectorType;
 import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.set.hash.THashSet;
 
@@ -61,6 +63,14 @@ public class RoomSpecialTypes {
     private final ConcurrentHashMap<Long, Set<InteractionWiredCondition>> wiredConditionsByLocation;
     private final ConcurrentHashMap<Long, Set<InteractionWiredExtra>> wiredExtrasByLocation;
 
+    // Selectors — indexed by type and by tile location
+    private final ConcurrentHashMap<WiredSelectorType, Set<InteractionWiredSelector>> wiredSelectors;
+    private final ConcurrentHashMap<Long, Set<InteractionWiredSelector>> wiredSelectorsByLocation;
+
+    private final ConcurrentHashMap<WiredVariableType, Set<InteractionWiredVariable>> wiredVariables;
+    private final ConcurrentHashMap<Integer, InteractionWiredVariable> wiredVariablesById;
+    private final ConcurrentHashMap<String, InteractionWiredVariable> wiredVariablesByName;
+
     private final THashMap<Integer, InteractionGameScoreboard> gameScoreboards;
     private final THashMap<Integer, InteractionGameGate> gameGates;
     private final THashMap<Integer, InteractionGameTimer> gameTimers;
@@ -88,6 +98,13 @@ public class RoomSpecialTypes {
         this.wiredEffectsByLocation = new ConcurrentHashMap<>();
         this.wiredConditionsByLocation = new ConcurrentHashMap<>();
         this.wiredExtrasByLocation = new ConcurrentHashMap<>();
+
+        this.wiredSelectors = new ConcurrentHashMap<>();
+        this.wiredSelectorsByLocation = new ConcurrentHashMap<>();
+
+        this.wiredVariables = new ConcurrentHashMap<>();
+        this.wiredVariablesById = new ConcurrentHashMap<>();
+        this.wiredVariablesByName = new ConcurrentHashMap<>();
 
         this.gameScoreboards = new THashMap<>(0);
         this.gameGates = new THashMap<>(0);
@@ -665,6 +682,24 @@ public class RoomSpecialTypes {
         return new THashSet<>(extras);
     }
 
+    public InteractionWiredExtra getExtra(int itemId) {
+        return this.wiredExtras.get(itemId);
+    }
+
+    public <T extends InteractionWiredExtra> T getExtra(int x, int y, Class<T> type) {
+        long key = coordinateKey(x, y);
+        Set<InteractionWiredExtra> extras = this.wiredExtrasByLocation.get(key);
+        if (extras == null) {
+            return null;
+        }
+        for (InteractionWiredExtra extra : extras) {
+            if (type.isAssignableFrom(extra.getClass())) {
+                return type.cast(extra);
+            }
+        }
+        return null;
+    }
+
     /**
      * Adds a wired extra to the room.
      * @param extra The extra to add
@@ -741,8 +776,178 @@ public class RoomSpecialTypes {
     }
 
 
+    // ── Selector methods
+
+    /**
+     * Gets all selector boxes at a specific tile position.
+     * Called by WiredTriggerSourceResolver when resolving SOURCE_SELECTOR.
+     */
+    public THashSet<InteractionWiredSelector> getSelectors(int x, int y) {
+        long key = coordinateKey(x, y);
+        Set<InteractionWiredSelector> selectors = this.wiredSelectorsByLocation.get(key);
+        if (selectors == null || selectors.isEmpty()) return new THashSet<>(0);
+        return new THashSet<>(selectors);
+    }
+
+    /** Gets all selector boxes in the room, across all types. */
+    public THashSet<InteractionWiredSelector> getSelectors() {
+        THashSet<InteractionWiredSelector> result = new THashSet<>();
+        for (Set<InteractionWiredSelector> selectors : this.wiredSelectors.values()) {
+            result.addAll(selectors);
+        }
+        return result;
+    }
+
+    public InteractionWiredSelector getSelector(int itemId) {
+        for (Set<InteractionWiredSelector> selectors : this.wiredSelectors.values()) {
+            for (InteractionWiredSelector selector : selectors) {
+                if (selector.getId() == itemId) return selector;
+            }
+        }
+        return null;
+    }
+
+    /** Registers a selector box when it is placed or the room loads. */
+    public void addSelector(InteractionWiredSelector selector) {
+        this.wiredSelectors.computeIfAbsent(selector.getType(), k -> ConcurrentHashMap.newKeySet())
+                .add(selector);
+        long key = coordinateKey(selector.getX(), selector.getY());
+        this.wiredSelectorsByLocation.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet())
+                .add(selector);
+    }
+
+    /** Unregisters a selector box when it is picked up or the room unloads. */
+    public void removeSelector(InteractionWiredSelector selector) {
+        Set<InteractionWiredSelector> byType = this.wiredSelectors.get(selector.getType());
+        if (byType != null) {
+            byType.remove(selector);
+            if (byType.isEmpty()) this.wiredSelectors.remove(selector.getType());
+        }
+        long key = coordinateKey(selector.getX(), selector.getY());
+        Set<InteractionWiredSelector> byLocation = this.wiredSelectorsByLocation.get(key);
+        if (byLocation != null) {
+            byLocation.remove(selector);
+            if (byLocation.isEmpty()) this.wiredSelectorsByLocation.remove(key);
+        }
+    }
+
+    /** Updates the spatial index when a selector box is moved to a new tile. */
+    public void updateSelectorLocation(InteractionWiredSelector selector, int oldX, int oldY) {
+        long oldKey = coordinateKey(oldX, oldY);
+        Set<InteractionWiredSelector> oldLocation = this.wiredSelectorsByLocation.get(oldKey);
+        if (oldLocation != null) {
+            oldLocation.remove(selector);
+            if (oldLocation.isEmpty()) this.wiredSelectorsByLocation.remove(oldKey);
+        }
+        long newKey = coordinateKey(selector.getX(), selector.getY());
+        this.wiredSelectorsByLocation.computeIfAbsent(newKey, k -> ConcurrentHashMap.newKeySet())
+                .add(selector);
+    }
+
+    public THashSet<InteractionWiredVariable> getVariables() {
+        THashSet<InteractionWiredVariable> result = new THashSet<>();
+        for (Set<InteractionWiredVariable> variables : this.wiredVariables.values()) {
+            result.addAll(variables);
+        }
+        return result;
+    }
+
+    public THashSet<InteractionWiredVariable> getVariables(WiredVariableType type) {
+        Set<InteractionWiredVariable> variables = this.wiredVariables.get(type);
+        if (variables == null || variables.isEmpty()) return new THashSet<>(0);
+        return new THashSet<>(variables);
+    }
+
+    public InteractionWiredVariable getVariable(int itemId) {
+        return this.wiredVariablesById.get(itemId);
+    }
+
+    public InteractionWiredVariable getVariable(WiredVariableType type, String name) {
+        if (name == null || name.isEmpty()) {
+            return null;
+        }
+
+        return this.wiredVariablesByName.get(variableKey(type, name));
+    }
+
+    public boolean isVariableNameInUse(WiredVariableType type, String name, int exceptItemId) {
+        if (name == null || name.isEmpty()) {
+            return false;
+        }
+
+        for (InteractionWiredVariable variable : this.wiredVariablesById.values()) {
+            if (variable.getId() != exceptItemId && name.equals(variable.getVariableName())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void addVariable(InteractionWiredVariable variable) {
+        this.wiredVariables.computeIfAbsent(variable.getType(), k -> ConcurrentHashMap.newKeySet())
+                .add(variable);
+        this.wiredVariablesById.put(variable.getId(), variable);
+        this.indexVariableName(variable);
+    }
+
+    public void removeVariable(InteractionWiredVariable variable) {
+        Set<InteractionWiredVariable> variables = this.wiredVariables.get(variable.getType());
+        if (variables != null) {
+            variables.remove(variable);
+            if (variables.isEmpty()) this.wiredVariables.remove(variable.getType());
+        }
+
+        this.wiredVariablesById.remove(variable.getId());
+        this.removeVariableName(variable);
+    }
+
+    public void refreshVariable(InteractionWiredVariable variable) {
+        this.wiredVariables.forEach((type, variables) -> {
+            variables.removeIf(existing -> existing.getId() == variable.getId());
+            if (variables.isEmpty()) {
+                this.wiredVariables.remove(type);
+            }
+        });
+        this.wiredVariables.computeIfAbsent(variable.getType(), k -> ConcurrentHashMap.newKeySet())
+                .add(variable);
+        this.wiredVariablesById.put(variable.getId(), variable);
+        this.wiredVariablesByName.entrySet().removeIf(entry -> entry.getValue().getId() == variable.getId());
+        this.indexVariableName(variable);
+    }
+
+    private void indexVariableName(InteractionWiredVariable variable) {
+        if (variable.getVariableName() == null || variable.getVariableName().isEmpty()) {
+            return;
+        }
+
+        this.wiredVariablesByName.put(variableKey(variable.getType(), variable.getVariableName()), variable);
+    }
+
+    private void removeVariableName(InteractionWiredVariable variable) {
+        this.wiredVariablesByName.entrySet().removeIf(entry -> entry.getValue().getId() == variable.getId());
+    }
+
+    private static String variableKey(WiredVariableType type, String name) {
+        return type.code + ":" + name;
+    }
+
     public InteractionGameScoreboard getGameScorebord(int itemId) {
         return this.gameScoreboards.get(itemId);
+    }
+
+    public THashMap<Integer, InteractionGameScoreboard> getGameScoreboards(GameTeamColors teamColor) {
+        synchronized (this.gameScoreboards) {
+            THashMap<Integer, InteractionGameScoreboard> boards = new THashMap<>();
+
+            for (Map.Entry<Integer, InteractionGameScoreboard> set : this.gameScoreboards.entrySet()) {
+                if (set.getValue().teamColor.equals(teamColor)) {
+                    boards.put(set.getValue().getId(), set.getValue());
+                }
+            }
+
+            return boards;
+        }
     }
 
     public void addGameScoreboard(InteractionGameScoreboard scoreboard) {
@@ -1008,6 +1213,11 @@ public class RoomSpecialTypes {
         this.wiredTriggers.clear();
         this.wiredEffects.clear();
         this.wiredConditions.clear();
+        this.wiredSelectors.clear();
+        this.wiredSelectorsByLocation.clear();
+        this.wiredVariables.clear();
+        this.wiredVariablesById.clear();
+        this.wiredVariablesByName.clear();
 
         this.gameScoreboards.clear();
         this.gameGates.clear();

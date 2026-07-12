@@ -3,38 +3,39 @@ package com.eu.habbo.habbohotel.wired.core;
 import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.catalog.CatalogItem;
 import com.eu.habbo.habbohotel.items.Item;
+import com.eu.habbo.habbohotel.items.chests.ChestTransactionFailure;
+import com.eu.habbo.habbohotel.items.interactions.InteractionOneWayGate;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
-import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectGiveReward;
-import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectTriggerStacks;
+import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectExecuteStacks;
+import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectExecuteStacksNegative;
+import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectSendSignalNegative;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
+import com.eu.habbo.habbohotel.rooms.RoomChatMessageBubbles;
+import com.eu.habbo.habbohotel.rooms.RoomChatType;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboBadge;
 import com.eu.habbo.habbohotel.users.HabboItem;
-import com.eu.habbo.habbohotel.wired.WiredGiveRewardItem;
 import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.creator.WiredCreatorToolsLogManager;
 import com.eu.habbo.habbohotel.wired.migrate.WiredEvents;
 import com.eu.habbo.habbohotel.wired.tick.WiredTickService;
 import com.eu.habbo.habbohotel.wired.tick.WiredTickable;
 import com.eu.habbo.messages.outgoing.catalog.PurchaseOKComposer;
 import com.eu.habbo.messages.outgoing.inventory.AddHabboItemComposer;
 import com.eu.habbo.messages.outgoing.inventory.InventoryRefreshComposer;
+import com.eu.habbo.messages.outgoing.wired.chests.ChestTransactionFailedComposer;
 import com.eu.habbo.messages.outgoing.users.AddUserBadgeComposer;
-import com.eu.habbo.messages.outgoing.wired.WiredRewardAlertComposer;
 import com.eu.habbo.plugin.EventHandler;
 import com.eu.habbo.plugin.events.emulator.EmulatorLoadedEvent;
-import com.eu.habbo.plugin.events.users.UserWiredRewardReceived;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import gnu.trove.set.hash.THashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.util.Map;
 
 /**
  * Manager class for the new wired engine system.
@@ -83,6 +84,9 @@ public final class WiredManager {
     
     /** The stack index */
     private static volatile RoomWiredStackIndex stackIndex;
+
+    /** Tracks live wired usage windows per room for creator tools and execution caps. */
+    private static final WiredUsageTracker usageTracker = new WiredUsageTracker();
     
     /** Whether the engine is initialized */
     private static volatile boolean initialized = false;
@@ -116,8 +120,7 @@ public final class WiredManager {
         boolean debug = Emulator.getConfig().getBoolean(CONFIG_DEBUG, false);
         
         // Load additional configuration
-        MAXIMUM_FURNI_SELECTION = Emulator.getConfig().getInt("hotel.wired.furni.selection.count", 5);
-        TELEPORT_DELAY = Emulator.getConfig().getInt("wired.effect.teleport.delay", 500);
+        MAXIMUM_FURNI_SELECTION = Emulator.getConfig().getInt("hotel.wired.furni.selection.count", 20);
 
         // Set debug mode
         if (debug) {
@@ -160,6 +163,8 @@ public final class WiredManager {
             engine.clearUnseenCache();
         }
 
+        usageTracker.clearAll();
+
         initialized = false;
         LOGGER.info("Wired Manager shutdown complete");
     }
@@ -196,6 +201,10 @@ public final class WiredManager {
         return stackIndex;
     }
 
+    public static WiredUsageTracker getUsageTracker() {
+        return usageTracker;
+    }
+
     // ========== Event Triggering Methods ==========
 
     /**
@@ -207,8 +216,16 @@ public final class WiredManager {
         if (!isEnabled() || engine == null) {
             return false;
         }
-        
+
         return engine.handleEvent(event);
+    }
+
+    public static boolean handleEvent(WiredEvent event, WiredState state) {
+        if (!isEnabled() || engine == null) {
+            return false;
+        }
+
+        return engine.handleEvent(event, state);
     }
 
     /**
@@ -218,8 +235,25 @@ public final class WiredManager {
         if (!isEnabled() || room == null || user == null || item == null) {
             return false;
         }
-        
-        WiredEvent event = WiredEvents.userWalksOn(room, user, item);
+
+        // During a one-way-gate transition, suppress WalksOn from unrelated items (prevents
+        // re-triggering when a gate slides back and forth over tiles the user passes), but
+        // still allow the transition gate itself AND anything stacked above it on the gate
+        // tile: if a tile/plate sits on top of the gate, the user is genuinely standing on
+        // it and it must fire like on Habbo.
+        if (InteractionOneWayGate.isInTransition(user)
+                && InteractionOneWayGate.isUnitOnTransitGate(user)
+                && !InteractionOneWayGate.isTransitionGate(user, item)
+                && !InteractionOneWayGate.isOnPendingExitTile(user, item)) {
+            if (!InteractionOneWayGate.isStackedAboveTransitionGate(user, item)) {
+                return false;
+            }
+
+            InteractionOneWayGate.commitPendingEntryFromStackedWalkOn(user);
+        }
+
+        Map<Integer, String> statesAtWalkStart = user.getWiredWalkStartItemStatesSnapshot();
+        WiredEvent event = WiredEvents.userWalksOn(room, user, item, statesAtWalkStart);
         return handleEvent(event);
     }
 
@@ -228,6 +262,10 @@ public final class WiredManager {
      */
     public static boolean triggerUserWalksOff(Room room, RoomUnit user, HabboItem item) {
         if (!isEnabled() || room == null || user == null || item == null) {
+            return false;
+        }
+
+        if (InteractionOneWayGate.isInTransition(user)) {
             return false;
         }
         
@@ -239,13 +277,50 @@ public final class WiredManager {
      * Trigger when a user says something.
      */
     public static boolean triggerUserSays(Room room, RoomUnit user, String message) {
+        return triggerUserSays(room, user, message, RoomChatType.TALK, RoomChatMessageBubbles.NORMAL);
+    }
+
+    public static boolean triggerUserSays(Room room, RoomUnit user, String message, RoomChatType chatType, RoomChatMessageBubbles chatStyle) {
         if (!isEnabled() || room == null || user == null) {
             return false;
         }
         
-        WiredEvent event = WiredEvents.userSays(room, user, message);
+        int type = chatType == null ? RoomChatType.TALK.ordinal() : chatType.ordinal();
+        int style = chatStyle == null ? RoomChatMessageBubbles.NORMAL.getType() : chatStyle.getType();
+        WiredEvent event = WiredEvents.userSays(room, user, message, type, style);
+        WiredState state = new WiredState(Emulator.getConfig().getInt(CONFIG_MAX_STEPS, DEFAULT_MAX_STEPS));
+        state.setContextValue("@event.chat.type", type);
+        state.setContextValue("@event.chat.style", style);
+
+        handleEvent(event, state);
+
+        return event.shouldHideChatMessage();
+    }
+
+    /**
+     * Trigger when a user performs action.
+     */
+    public static boolean triggerUserPerformAction(Room room, RoomUnit user, int action) {
+        if (!isEnabled() || room == null || user == null) {
+            return false;
+        }
+
+        WiredEvent event = WiredEvents.userPerformAction(room, user, action);
         return handleEvent(event);
     }
+
+    /**
+     * Trigger when a user performs action for dance/signs
+     */
+    public static boolean triggerUserPerformAction(Room room, RoomUnit user, int action, int actionIndex) {
+        if (!isEnabled() || room == null || user == null) {
+            return false;
+        }
+
+        WiredEvent event = WiredEvents.userPerformAction(room, user, action, actionIndex);
+        return handleEvent(event);
+    }
+
 
     /**
      * Trigger when a user enters the room.
@@ -254,8 +329,20 @@ public final class WiredManager {
         if (!isEnabled() || room == null || user == null) {
             return false;
         }
-        
+
         WiredEvent event = WiredEvents.userEntersRoom(room, user);
+        return handleEvent(event);
+    }
+
+    /**
+     * Trigger when a user leaves the room.
+     */
+    public static boolean triggerUserLeavesRoom(Room room, RoomUnit user) {
+        if (!isEnabled() || room == null || user == null) {
+            return false;
+        }
+
+        WiredEvent event = WiredEvents.userLeavesRoom(room, user);
         return handleEvent(event);
     }
 
@@ -266,7 +353,7 @@ public final class WiredManager {
         if (!isEnabled() || room == null || item == null) {
             return false;
         }
-        
+
         WiredEvent event = WiredEvents.furniStateChanged(room, user, item);
         return handleEvent(event);
     }
@@ -278,8 +365,20 @@ public final class WiredManager {
         if (!isEnabled() || room == null) {
             return false;
         }
-        
+
         WiredEvent event = WiredEvents.timerTick(room, timerItem);
+        return handleEvent(event);
+    }
+
+    /**
+     * Trigger when a counter reaches a set time
+     */
+    public static boolean triggerCounterReachesSetTime(Room room, HabboItem item) {
+        if (!isEnabled() || room == null || item == null) {
+            return false;
+        }
+
+        WiredEvent event = WiredEvents.counterReachesSetTime(room, item);
         return handleEvent(event);
     }
 
@@ -290,8 +389,32 @@ public final class WiredManager {
         if (!isEnabled() || room == null) {
             return false;
         }
-        
+
         WiredEvent event = WiredEvents.timerRepeat(room, timerItem);
+        return handleEvent(event);
+    }
+
+    /**
+     * Trigger a periodic timer long.
+     */
+    public static boolean triggerTimerRepeatLong(Room room, HabboItem timerItem) {
+        if (!isEnabled() || room == null) {
+            return false;
+        }
+
+        WiredEvent event = WiredEvents.timerRepeatLong(room, timerItem);
+        return handleEvent(event);
+    }
+
+    /**
+     * Trigger a periodic timer short.
+     */
+    public static boolean triggerTimerRepeatShort(Room room, HabboItem timerItem) {
+        if (!isEnabled() || room == null) {
+            return false;
+        }
+
+        WiredEvent event = WiredEvents.timerRepeatShort(room, timerItem);
         return handleEvent(event);
     }
 
@@ -372,78 +495,6 @@ public final class WiredManager {
     }
 
     /**
-     * Trigger when user starts idling.
-     */
-    public static boolean triggerUserIdles(Room room, RoomUnit user) {
-        if (!isEnabled() || room == null || user == null) {
-            return false;
-        }
-        
-        WiredEvent event = WiredEvents.userIdles(room, user);
-        return handleEvent(event);
-    }
-
-    /**
-     * Trigger when user stops idling.
-     */
-    public static boolean triggerUserUnidles(Room room, RoomUnit user) {
-        if (!isEnabled() || room == null || user == null) {
-            return false;
-        }
-        
-        WiredEvent event = WiredEvents.userUnidles(room, user);
-        return handleEvent(event);
-    }
-
-    /**
-     * Trigger when user starts dancing.
-     */
-    public static boolean triggerUserStartsDancing(Room room, RoomUnit user) {
-        if (!isEnabled() || room == null || user == null) {
-            return false;
-        }
-        
-        WiredEvent event = WiredEvents.userStartsDancing(room, user);
-        return handleEvent(event);
-    }
-
-    /**
-     * Trigger when user stops dancing.
-     */
-    public static boolean triggerUserStopsDancing(Room room, RoomUnit user) {
-        if (!isEnabled() || room == null || user == null) {
-            return false;
-        }
-        
-        WiredEvent event = WiredEvents.userStopsDancing(room, user);
-        return handleEvent(event);
-    }
-
-    /**
-     * Trigger when a team wins a game.
-     */
-    public static boolean triggerTeamWins(Room room, RoomUnit user) {
-        if (!isEnabled() || room == null) {
-            return false;
-        }
-        
-        WiredEvent event = WiredEvents.teamWins(room, user);
-        return handleEvent(event);
-    }
-
-    /**
-     * Trigger when a team loses a game.
-     */
-    public static boolean triggerTeamLoses(Room room, RoomUnit user) {
-        if (!isEnabled() || room == null) {
-            return false;
-        }
-        
-        WiredEvent event = WiredEvents.teamLoses(room, user);
-        return handleEvent(event);
-    }
-
-    /**
      * Trigger from legacy system for parallel running.
      * This allows the new engine to run alongside the old one during migration.
      */
@@ -453,6 +504,157 @@ public final class WiredManager {
         }
         
         WiredEvent event = WiredEvents.fromLegacy(triggerType, room, roomUnit, stuff);
+        return handleEvent(event);
+    }
+
+    /** Trigger when a user clicks a furni */
+    public static boolean triggerUserClicks(Room room, RoomUnit user, HabboItem item) {
+        WiredEvent event = WiredEvents.userClicksFurni(room, user, item);
+        return handleEvent(event);
+    }
+
+    /** Trigger when a user clicks a user */
+    public static boolean triggerUserClicksUser(Room room, RoomUnit user, RoomUnit targetUnit) {
+        WiredEvent event = WiredEvents.userClicksUser(room, user, targetUnit);
+        return handleEvent(event);
+    }
+
+    /** Trigger when a user clicks an invis tile or tile */
+    public static boolean triggerUserClicksTile(Room room, RoomUnit user, HabboItem item) {
+        WiredEvent event = WiredEvents.userClicksTile(room, user, item);
+        return handleEvent(event);
+    }
+
+    /**
+     * Trigger when a user clicks a bare tile (no invisible click-tile furni present).
+     * Dispatches a USER_CLICKS_TILE event with only the tile coordinate set — no sourceItem.
+     * Used by RoomUserWalkEvent when no invisible click tile furni was found at the clicked coords.
+     */
+    public static boolean triggerUserClicksTileByCoords(Room room, RoomUnit user, short x, short y) {
+        if (!isEnabled() || room == null || room.getLayout() == null) return false;
+        RoomTile tile = room.getLayout().getTile(x, y);
+        if (tile == null) return false;
+        WiredEvent event = WiredEvent.builder(WiredEvent.Type.USER_CLICKS_TILE, room)
+                .actor(user)
+                .tile(tile)
+                .build();
+        return handleEvent(event);
+    }
+
+    /** Trigger when a user manually releases a mouse hold in the room canvas */
+    public static boolean triggerUserReleases(Room room, RoomUnit user, WiredMouseHoldState holdState, WiredMouseHoldTarget releaseTarget) {
+        if (!isEnabled() || room == null || user == null || holdState == null || releaseTarget == null) {
+            return false;
+        }
+
+        WiredState state = new WiredState(Emulator.getConfig().getInt(CONFIG_MAX_STEPS, DEFAULT_MAX_STEPS));
+        WiredMouseHoldManager.populateReleaseContext(state, room, holdState, releaseTarget);
+        WiredEvent event = WiredEvent.builder(WiredEvent.Type.USER_RELEASES, room)
+                .actor(user)
+                .tile(releaseTarget.hasTile() ? room.getLayout().getTile(releaseTarget.getX(), releaseTarget.getY()) : user.getCurrentLocation())
+                .build();
+        return handleEvent(event, state);
+    }
+
+    public static boolean triggerTransactionCompleted(Room room, RoomUnit user, HabboItem contract, WiredState inheritedState) {
+        if (!isEnabled() || room == null || contract == null) {
+            return false;
+        }
+
+        WiredEvent event = WiredEvent.builder(WiredEvent.Type.TRANSACTION_COMPLETED, room)
+                .actor(user)
+                .sourceItem(contract)
+                .build();
+        return handleEvent(event, inheritedState);
+    }
+
+    public static boolean triggerTransactionFailed(Room room, RoomUnit user, HabboItem contract, int reasonCode, String reasonText, WiredState inheritedState) {
+        if (!isEnabled() || room == null || contract == null) {
+            return false;
+        }
+
+        ChestTransactionFailure failure = ChestTransactionFailure.fromCodeOrText(reasonCode, reasonText);
+        WiredState state = inheritedState == null
+                ? new WiredState(Emulator.getConfig().getInt(CONFIG_MAX_STEPS, DEFAULT_MAX_STEPS))
+                : inheritedState;
+        state.setContextValue("@event.transaction_failed.reason", failure.getCode());
+
+        if (shouldLogTransactionFailure(failure)) {
+            WiredCreatorToolsLogManager.addSystemLog(room, "ERROR", "Wired Error: TRANSACTION_FAILURE: " + failure.getMessage());
+        }
+
+        if (failure != ChestTransactionFailure.CANCELLED_BY_USER) {
+            Habbo habbo = user == null ? null : room.getHabbo(user);
+            if (habbo != null && habbo.getClient() != null) {
+                habbo.getClient().sendResponse(new ChestTransactionFailedComposer(failure));
+            }
+        }
+
+        WiredEvent event = WiredEvent.builder(WiredEvent.Type.TRANSACTION_FAILED, room)
+                .actor(user)
+                .sourceItem(contract)
+                .text(failure.getMessage())
+                .build();
+        return handleEvent(event, state);
+    }
+
+    private static boolean shouldLogTransactionFailure(ChestTransactionFailure failure) {
+        if (failure == null) {
+            return false;
+        }
+
+        switch (failure) {
+            case WIRED_MISCONFIGURATION:
+            case NO_SUFFICIENT_FUNDS:
+            case FUNDS_NO_LONGER_AVAILABLE:
+            case CHEST_OWNER_CANT_TRADE:
+            case CHEST_FULL:
+            case CHEST_NOT_IN_ROOM:
+            case TOO_MANY_CHESTS:
+            case NO_WIRED_CHESTS_OR_LOCKED:
+            case CANNOT_GIVE_ALL_TO_MULTIPLE_USERS:
+            case TRADE_LIMIT_WIRED:
+            case AT_CAPACITY:
+            case MISCONFIG_INVALID_MULTIPLIER:
+            case MISCONFIG_TOO_MANY_OR_NO_CONTRACTS:
+            case MISCONFIG_NO_USERS:
+            case MISCONFIG_INVALID_TIMEOUT:
+            case INTERNAL_ERROR:
+            case INTERNAL_ERROR_DB:
+            case INTERNAL_ERROR_RELOAD_REQUIRED:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public static boolean triggerReceiveSignal(Room room, RoomUnit user, HabboItem antenna, java.util.List<HabboItem> signalItems, java.util.List<RoomUnit> signalUsers) {
+        if (!isEnabled() || room == null || antenna == null) {
+            return false;
+        }
+
+        WiredEvent event = WiredEvents.receiveSignal(room, user, antenna, signalItems, signalUsers);
+        return handleEvent(event);
+    }
+
+    public static boolean triggerReceiveSignal(Room room, RoomUnit user, HabboItem antenna, java.util.List<HabboItem> signalItems, java.util.List<RoomUnit> signalUsers, WiredState state) {
+        if (!isEnabled() || room == null || antenna == null) {
+            return false;
+        }
+
+        WiredEvent event = WiredEvents.receiveSignal(room, user, antenna, signalItems, signalUsers);
+        return handleEvent(event, state);
+    }
+
+    /**
+     * Trigger when furniture state changes. NEW - Doesnt require user input
+     */
+    public static boolean triggerNewFurniStateChange(Room room, HabboItem item) {
+        if (!isEnabled() || room == null || item == null) {
+            return false;
+        }
+        
+        WiredEvent event = WiredEvents.newFurniStateChanged(room, item);
         return handleEvent(event);
     }
 
@@ -492,11 +694,8 @@ public final class WiredManager {
     // ========== Configuration Constants (moved from WiredHandler) ==========
 
     /** Maximum number of furniture items that can be selected in a single wired component */
-    public static int MAXIMUM_FURNI_SELECTION = 5;
+    public static int MAXIMUM_FURNI_SELECTION = 20;
     
-    /** Delay in milliseconds between teleport executions */
-    public static int TELEPORT_DELAY = 500;
-
     // ========== Debug Mode ==========
     
     /** Debug mode - when enabled, logs detailed wired execution flow */
@@ -602,6 +801,8 @@ public final class WiredManager {
      */
     public static void unregisterRoomTickables(Room room) {
         WiredTickService.getInstance().unregisterRoom(room);
+        usageTracker.clear(room);
+        WiredMovementLimiter.clear(room);
     }
     
     /**
@@ -638,27 +839,42 @@ public final class WiredManager {
     /**
      * Execute all wired effects at the specified tiles.
      * @param tiles the tiles to execute effects at
-     * @param roomUnit the triggering room unit (may be null)
-     * @param room the room
+     * @param parentContext the context that caused the direct stack execution
      * @param callStackDepth current recursion depth for trigger stacks
      * @return true if any effects were executed
      */
-    public static boolean executeEffectsAtTiles(THashSet<RoomTile> tiles, final RoomUnit roomUnit, final Room room, final int callStackDepth) {
+    public static boolean executeEffectsAtTiles(THashSet<RoomTile> tiles, final WiredContext parentContext, final int callStackDepth) {
+        if (parentContext == null) {
+            return false;
+        }
+
+        final Room room = parentContext.room();
+
         for (RoomTile tile : tiles) {
             if (room != null) {
+                if (!usageTracker.tryConsumeExecuteStack(room, tile, callStackDepth)) {
+                    continue;
+                }
+
                 THashSet<HabboItem> items = room.getItemsAt(tile);
 
                 long millis = room.getCycleTimestamp();
                 for (final HabboItem item : items) {
-                    if (item instanceof InteractionWiredEffect && !(item instanceof WiredEffectTriggerStacks)) {
+                    if (item instanceof InteractionWiredEffect
+                            && !(item instanceof WiredEffectExecuteStacks)
+                            && !(item instanceof WiredEffectExecuteStacksNegative)
+                            && !(item instanceof WiredEffectSendSignalNegative)) {
                         InteractionWiredEffect effect = (InteractionWiredEffect) item;
-                        WiredEvent event = WiredEvent.builder(WiredEvent.Type.CUSTOM, room)
-                            .actor(roomUnit)
-                            .callStackDepth(callStackDepth)
-                            .build();
-                        WiredContext ctx = new WiredContext(event, effect, DefaultWiredServices.getInstance(), new WiredState(100));
-                        effect.execute(ctx);
-                        effect.setCooldown(millis);
+                        WiredEvent event = parentContext.event().withCallStackDepth(callStackDepth);
+                        WiredContext ctx = new WiredContext(event, effect, DefaultWiredServices.getInstance(), parentContext.state());
+                        try {
+                            parentContext.state().step();
+                            effect.execute(ctx);
+                            effect.setCooldown(millis);
+                        } catch (WiredLimitException limitEx) {
+                            debug("ExecuteStacks stopped (limit): {}", limitEx.getMessage());
+                            return true;
+                        }
                     }
                 }
             }
@@ -666,207 +882,7 @@ public final class WiredManager {
 
         return true;
     }
-
-    // ========== Reward System ==========
-
-    /**
-     * Asynchronously drops/deletes all rewards given by a specific wired item.
-     * Used when a wired reward box is picked up or reset.
-     * 
-     * @param wiredId The ID of the wired item whose rewards should be deleted
-     */
-    public static void dropRewards(int wiredId) {
-        Emulator.getThreading().run(() -> {
-            try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); 
-                 PreparedStatement statement = connection.prepareStatement("DELETE FROM wired_rewards_given WHERE wired_item = ?")) {
-                statement.setInt(1, wiredId);
-                statement.execute();
-            } catch (SQLException e) {
-                LOGGER.error("Caught SQL exception", e);
-            }
-        });
-    }
-
-    private static void giveReward(Habbo habbo, WiredEffectGiveReward wiredBox, WiredGiveRewardItem reward) {
-        if (wiredBox.getLimit() > 0)
-            wiredBox.incrementGiven();
-
-        final int wiredId = wiredBox.getId();
-        final int habboId = habbo.getHabboInfo().getId();
-        final int rewardId = reward.id;
-        final int timestamp = Emulator.getIntUnixTimestamp();
-        
-        Emulator.getThreading().run(() -> {
-            try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); 
-                 PreparedStatement statement = connection.prepareStatement("INSERT INTO wired_rewards_given (wired_item, user_id, reward_id, timestamp) VALUES ( ?, ?, ?, ?)")) {
-                statement.setInt(1, wiredId);
-                statement.setInt(2, habboId);
-                statement.setInt(3, rewardId);
-                statement.setInt(4, timestamp);
-                statement.execute();
-            } catch (SQLException e) {
-                LOGGER.error("Caught SQL exception", e);
-            }
-        });
-
-        if (reward.badge) {
-            UserWiredRewardReceived rewardReceived = new UserWiredRewardReceived(habbo, wiredBox, "badge", reward.data);
-            if (Emulator.getPluginManager().fireEvent(rewardReceived).isCancelled())
-                return;
-
-            if (rewardReceived.value.isEmpty())
-                return;
-            
-            if (habbo.getInventory().getBadgesComponent().hasBadge(rewardReceived.value))
-                return;
-
-            HabboBadge badge = new HabboBadge(0, rewardReceived.value, 0, habbo);
-            Emulator.getThreading().run(badge);
-            habbo.getInventory().getBadgesComponent().addBadge(badge);
-            habbo.getClient().sendResponse(new AddUserBadgeComposer(badge));
-            habbo.getClient().sendResponse(new WiredRewardAlertComposer(WiredRewardAlertComposer.REWARD_RECEIVED_BADGE));
-        } else {
-            String[] data = reward.data.split("#");
-
-            if (data.length == 2) {
-                UserWiredRewardReceived rewardReceived = new UserWiredRewardReceived(habbo, wiredBox, data[0], data[1]);
-                if (Emulator.getPluginManager().fireEvent(rewardReceived).isCancelled())
-                    return;
-
-                if (rewardReceived.value.isEmpty())
-                    return;
-
-                if (rewardReceived.type.equalsIgnoreCase("credits")) {
-                    int credits = Integer.parseInt(rewardReceived.value);
-                    habbo.giveCredits(credits);
-                } else if (rewardReceived.type.equalsIgnoreCase("pixels")) {
-                    int pixels = Integer.parseInt(rewardReceived.value);
-                    habbo.givePixels(pixels);
-                } else if (rewardReceived.type.startsWith("points")) {
-                    int points = Integer.parseInt(rewardReceived.value);
-                    int type = 5;
-
-                    try {
-                        type = Integer.parseInt(rewardReceived.type.replace("points", ""));
-                    } catch (Exception e) {
-                    }
-
-                    habbo.givePoints(type, points);
-                } else if (rewardReceived.type.equalsIgnoreCase("furni")) {
-                    Item baseItem = Emulator.getGameEnvironment().getItemManager().getItem(Integer.parseInt(rewardReceived.value));
-                    if (baseItem != null) {
-                        HabboItem item = Emulator.getGameEnvironment().getItemManager().createItem(habbo.getHabboInfo().getId(), baseItem, 0, 0, "");
-
-                        if (item != null) {
-                            habbo.getClient().sendResponse(new AddHabboItemComposer(item));
-                            habbo.getClient().getHabbo().getInventory().getItemsComponent().addItem(item);
-                            habbo.getClient().sendResponse(new PurchaseOKComposer(null));
-                            habbo.getClient().sendResponse(new InventoryRefreshComposer());
-                            habbo.getClient().sendResponse(new WiredRewardAlertComposer(WiredRewardAlertComposer.REWARD_RECEIVED_ITEM));
-                        }
-                    }
-                } else if (rewardReceived.type.equalsIgnoreCase("respect")) {
-                    habbo.getHabboStats().respectPointsReceived += Integer.parseInt(rewardReceived.value);
-                } else if (rewardReceived.type.equalsIgnoreCase("cata")) {
-                    CatalogItem item = Emulator.getGameEnvironment().getCatalogManager().getCatalogItem(Integer.parseInt(rewardReceived.value));
-
-                    if (item != null) {
-                        Emulator.getGameEnvironment().getCatalogManager().purchaseItem(null, item, habbo, 1, "", true);
-                    }
-                    habbo.getClient().sendResponse(new WiredRewardAlertComposer(WiredRewardAlertComposer.REWARD_RECEIVED_ITEM));
-                }
-            }
-        }
-    }
-
-    public static boolean getReward(Habbo habbo, WiredEffectGiveReward wiredBox) {
-        if (wiredBox.getLimit() > 0) {
-            if (wiredBox.getLimit() - wiredBox.getGiven() == 0) {
-                habbo.getClient().sendResponse(new WiredRewardAlertComposer(WiredRewardAlertComposer.LIMITED_NO_MORE_AVAILABLE));
-                return false;
-            }
-        }
-
-        try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) as row_count, wired_rewards_given.* FROM wired_rewards_given WHERE user_id = ? AND wired_item = ? ORDER BY timestamp DESC LIMIT ?", ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY)) {
-            statement.setInt(1, habbo.getHabboInfo().getId());
-            statement.setInt(2, wiredBox.getId());
-            statement.setInt(3, wiredBox.getRewardItems().size());
-
-            try (ResultSet set = statement.executeQuery()) {
-                if (set.first()) {
-                    if (set.getInt("row_count") >= 1) {
-                        if (wiredBox.getRewardTime() == WiredEffectGiveReward.LIMIT_ONCE) {
-                            habbo.getClient().sendResponse(new WiredRewardAlertComposer(WiredRewardAlertComposer.REWARD_ALREADY_RECEIVED));
-                            return false;
-                        }
-                    }
-
-                    set.beforeFirst();
-                    if (set.next()) {
-                        if (wiredBox.getRewardTime() == WiredEffectGiveReward.LIMIT_N_MINUTES) {
-                            if (Emulator.getIntUnixTimestamp() - set.getInt("timestamp") <= 60) {
-                                habbo.getClient().sendResponse(new WiredRewardAlertComposer(WiredRewardAlertComposer.REWARD_ALREADY_RECEIVED_THIS_MINUTE));
-                                return false;
-                            }
-                        }
-
-                        if (wiredBox.isUniqueRewards()) {
-                            if (set.getInt("row_count") == wiredBox.getRewardItems().size()) {
-                                habbo.getClient().sendResponse(new WiredRewardAlertComposer(WiredRewardAlertComposer.REWARD_ALL_COLLECTED));
-                                return false;
-                            }
-                        }
-
-                        if (wiredBox.getRewardTime() == WiredEffectGiveReward.LIMIT_N_HOURS) {
-                            if (!(Emulator.getIntUnixTimestamp() - set.getInt("timestamp") >= (3600 * wiredBox.getLimitationInterval()))) {
-                                habbo.getClient().sendResponse(new WiredRewardAlertComposer(WiredRewardAlertComposer.REWARD_ALREADY_RECEIVED_THIS_HOUR));
-                                return false;
-                            }
-                        }
-
-                        if (wiredBox.getRewardTime() == WiredEffectGiveReward.LIMIT_N_DAY) {
-                            if (!(Emulator.getIntUnixTimestamp() - set.getInt("timestamp") >= (86400 * wiredBox.getLimitationInterval()))) {
-                                habbo.getClient().sendResponse(new WiredRewardAlertComposer(WiredRewardAlertComposer.REWARD_ALREADY_RECEIVED_THIS_TODAY));
-                                return false;
-                            }
-                        }
-                    }
-
-                    if (wiredBox.isUniqueRewards()) {
-                        for (WiredGiveRewardItem item : wiredBox.getRewardItems()) {
-                            set.beforeFirst();
-                            boolean found = false;
-
-                            while (set.next()) {
-                                if (set.getInt("reward_id") == item.id)
-                                    found = true;
-                            }
-
-                            if (!found) {
-                                giveReward(habbo, wiredBox, item);
-                                return true;
-                            }
-                        }
-                    } else {
-                        int randomNumber = Emulator.getRandom().nextInt(101);
-
-                        int count = 0;
-                        for (WiredGiveRewardItem item : wiredBox.getRewardItems()) {
-                            if (randomNumber >= count && randomNumber <= (count + item.probability)) {
-                                giveReward(habbo, wiredBox, item);
-                                return true;
-                            }
-
-                            count += item.probability;
-                        }
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            LOGGER.error("Caught SQL exception", e);
-        }
-
-        return false;
-    }
 }
+
+
 

@@ -14,7 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class WiredConditionNotHabboCount extends InteractionWiredCondition {
-    public static final WiredConditionType type = WiredConditionType.NOT_USER_COUNT;
+    public static final WiredConditionType type = WiredConditionType.NOT_AVATAR_COUNT_IN_ROOM;
 
     private int lowerLimit = 10;
     private int upperLimit = 20;

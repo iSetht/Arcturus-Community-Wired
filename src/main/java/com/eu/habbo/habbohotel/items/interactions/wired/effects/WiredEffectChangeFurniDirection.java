@@ -5,14 +5,17 @@ import com.eu.habbo.habbohotel.gameclients.GameClient;
 import com.eu.habbo.habbohotel.items.Item;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
+import com.eu.habbo.habbohotel.items.interactions.wired.utils.WiredMoveFurniAvatarCollision;
 import com.eu.habbo.habbohotel.rooms.*;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.*;
+import com.eu.habbo.habbohotel.wired.core.MoveOptions;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraMovementPhysics;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredMovement;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
-import com.eu.habbo.messages.outgoing.rooms.items.FloorItemOnRollerComposer;
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.set.hash.THashSet;
 
@@ -21,6 +24,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
     public static final int ACTION_WAIT = 0;
@@ -31,11 +35,13 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
     public static final int ACTION_TURN_BACK = 5;
     public static final int ACTION_TURN_RANDOM = 6;
 
-    public static final WiredEffectType type = WiredEffectType.MOVE_DIRECTION;
+    public static final WiredEffectType type = WiredEffectType.CHANGE_FURNI_DIRECTION;
 
     private final THashMap<HabboItem, WiredChangeDirectionSetting> items = new THashMap<>(0);
+    private final Map<Integer, WiredChangeDirectionSetting> runtimeItems = new ConcurrentHashMap<>();
     private RoomUserRotation startRotation = RoomUserRotation.NORTH;
     private int blockedAction = 0;
+    private boolean blockOnUserCollision = true;
 
     public WiredEffectChangeFurniDirection(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
@@ -53,81 +59,112 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
         THashSet<HabboItem> items = new THashSet<>();
 
         for (HabboItem item : this.items.keySet()) {
-            if (item == null || Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId()).getHabboItem(item.getId()) == null)
+            if (item == null || room.getHabboItem(item.getId()) == null)
                 items.add(item);
         }
 
         for (HabboItem item : items) {
             this.items.remove(item);
         }
+        this.runtimeItems.entrySet().removeIf(entry -> room.getHabboItem(entry.getKey()) == null);
 
-        if (this.items.isEmpty()) return;
+        List<HabboItem> sourceItems = this.resolveSourceItems(ctx, this.items.keySet());
+        if (sourceItems.isEmpty()) return;
 
-        for (Map.Entry<HabboItem, WiredChangeDirectionSetting> entry : this.items.entrySet()) {
-            HabboItem item = entry.getKey();
-            if (item == null || entry.getValue() == null) continue;
-            
-            RoomTile itemTile = room.getLayout().getTile(item.getX(), item.getY());
-            if (itemTile == null) continue;
-            
-            RoomTile targetTile = room.getLayout().getTileInFront(itemTile, entry.getValue().direction.getValue());
-
-            int count = 1;
-            while ((targetTile == null || targetTile.state == RoomTileState.INVALID || room.furnitureFitsAt(targetTile, item, item.getRotation(), false) != FurnitureMovementError.NONE) && count < 8) {
-                entry.getValue().direction = this.nextRotation(entry.getValue().direction);
-
-                RoomTile tile = room.getLayout().getTileInFront(itemTile, entry.getValue().direction.getValue());
-                if (tile != null && tile.state != RoomTileState.INVALID) {
-                    targetTile = tile;
-                }
-
-                count++;
-            }
+        if (!WiredManager.getUsageTracker().tryConsumeRuntimeItems(room, sourceItems.size())) {
+            return;
         }
 
-        for (Map.Entry<HabboItem, WiredChangeDirectionSetting> entry : this.items.entrySet()) {
-            HabboItem item = entry.getKey();
-            if (item == null || entry.getValue() == null) continue;
-            
-            int newDirection = entry.getValue().direction.getValue();
+        boolean ignoreFurniStacking = WiredExtraMovementPhysics.resolve(ctx).moveThroughFurni();
 
-            RoomTile itemTile = room.getLayout().getTile(item.getX(), item.getY());
-            if (itemTile == null) continue;
-            
-            RoomTile targetTile = room.getLayout().getTileInFront(itemTile, newDirection);
+        int animationTimeMs = WiredMovement.highFrequencyAnimationTime(ctx);
+        MoveOptions slideOptions = MoveOptions.slide()
+                .animationTimeMs(animationTimeMs)
+                .allowUnitCollision(!this.blockOnUserCollision);
 
-            if(item.getRotation() != entry.getValue().rotation) {
-                if(targetTile == null || room.furnitureFitsAt(targetTile, item, entry.getValue().rotation, false) != FurnitureMovementError.NONE)
+        WiredMovement.beginFurniMutationBatch(ctx);
+        try {
+            for (HabboItem item : sourceItems) {
+                if (item == null) continue;
+
+                WiredChangeDirectionSetting setting = this.items.get(item);
+                if (setting == null) {
+                    setting = this.runtimeItems.computeIfAbsent(item.getId(),
+                            itemId -> new WiredChangeDirectionSetting(itemId, item.getRotation(), this.startRotation));
+                }
+
+                RoomTile itemTile = room.getLayout().getTile(item.getX(), item.getY());
+                if (itemTile == null) continue;
+
+                RoomTile targetTile = room.getLayout().getTileInFront(itemTile, setting.direction.getValue());
+                RoomUnit originalPathCollision = this.blockOnUserCollision && targetTile != null && targetTile.state != RoomTileState.INVALID
+                        ? WiredMoveFurniAvatarCollision.findAvatarInMovementPath(room, item, targetTile, item.getRotation())
+                        : null;
+                if (originalPathCollision != null) {
+                    WiredManager.triggerBotCollision(room, originalPathCollision);
                     continue;
+                }
 
-                room.moveFurniTo(entry.getKey(), targetTile, entry.getValue().rotation, null, true);
-            }
+                // ACTION_WAIT does not need a speculative furnitureFitsAt pass: the shared
+                // mover will validate this one destination while committing it. Other blocked
+                // actions only preflight while searching for an alternate direction.
+                if (this.blockedAction != ACTION_WAIT) {
+                    int count = 1;
+                    while ((targetTile == null
+                            || targetTile.state == RoomTileState.INVALID
+                            || room.furnitureFitsAt(
+                                    targetTile,
+                                    item,
+                                    item.getRotation(),
+                                    this.blockOnUserCollision && !WiredMoveFurniAvatarCollision.hasOnlyUsersLeavingDestination(room, item, targetTile, item.getRotation()),
+                                    ignoreFurniStacking) != FurnitureMovementError.NONE)
+                            && count < 8) {
+                        setting.direction = this.nextRotation(setting.direction);
+                        targetTile = room.getLayout().getTileInFront(itemTile, setting.direction.getValue());
+                        count++;
+                    }
 
-            if (targetTile == null) continue;
+                    if (targetTile == null || targetTile.state == RoomTileState.INVALID) continue;
+                } else if (targetTile == null || targetTile.state == RoomTileState.INVALID) {
+                    continue;
+                }
 
-            boolean hasRoomUnits = false;
-            THashSet<RoomTile> newOccupiedTiles = room.getLayout().getTilesAt(targetTile, item.getBaseItem().getWidth(), item.getBaseItem().getLength(), item.getRotation());
-            for(RoomTile tile : newOccupiedTiles) {
-                for (RoomUnit _roomUnit : room.getRoomUnits(tile)) {
-                    hasRoomUnits = true;
-                    if(_roomUnit.getCurrentLocation() == targetTile) {
-                        Emulator.getThreading().run(() -> {
-                            WiredManager.triggerBotCollision(room, _roomUnit);
-                        });
-                        break;
+                int targetRotation = item.getRotation() != setting.rotation
+                        ? setting.rotation
+                        : item.getRotation();
+                MoveOptions moveOptions = slideOptions;
+                RoomUnit collisionTarget = this.blockOnUserCollision
+                        ? WiredMoveFurniAvatarCollision.findAvatarInMovementPath(room, item, targetTile, targetRotation)
+                        : null;
+                if (collisionTarget != null) {
+                    WiredManager.triggerBotCollision(room, collisionTarget);
+                    continue;
+                }
+                RoomUnit approachingTarget = this.blockOnUserCollision
+                        ? WiredMoveFurniAvatarCollision.findApproachingAvatarInMovementPath(room, item, targetTile, targetRotation)
+                        : null;
+                if (approachingTarget != null) {
+                    if (!WiredMoveFurniAvatarCollision.isSwappingWithMovingItem(item, targetTile, approachingTarget)) {
+                        room.postCycleTasks.add(() -> WiredManager.triggerBotCollision(room, approachingTarget));
+                        continue;
                     }
                 }
-            }
-
-            if (targetTile.state != RoomTileState.INVALID && room.furnitureFitsAt(targetTile, item, item.getRotation(), false) == FurnitureMovementError.NONE) {
-                if (!hasRoomUnits) {
-                    RoomTile oldLocation = room.getLayout().getTile(entry.getKey().getX(), entry.getKey().getY());
-                    double oldZ = entry.getKey().getZ();
-                    if(oldLocation != null && room.moveFurniTo(entry.getKey(), targetTile, item.getRotation(), null, false) == FurnitureMovementError.NONE) {
-                        room.sendComposer(new FloorItemOnRollerComposer(entry.getKey(), null, oldLocation, oldZ, targetTile, entry.getKey().getZ(), 0, room).compose());
-                    }
+                RoomUnit leavingTarget = this.blockOnUserCollision && approachingTarget == null
+                        ? WiredMoveFurniAvatarCollision.findLeavingAvatarInMovementPath(room, item, targetTile, targetRotation)
+                        : null;
+                if (leavingTarget != null) {
+                    WiredManager.triggerBotCollision(room, leavingTarget);
+                    continue;
                 }
+                if (this.blockOnUserCollision
+                        && (WiredMoveFurniAvatarCollision.hasOnlyOneWayGateTransitionUsers(room, item, targetTile, targetRotation)
+                        || WiredMoveFurniAvatarCollision.hasOnlyUsersLeavingDestination(room, item, targetTile, targetRotation))) {
+                    moveOptions = moveOptions.allowUnitCollision(true);
+                }
+                WiredMovement.moveFurni(ctx, item, targetTile, targetRotation, moveOptions);
             }
+        } finally {
+            WiredMovement.endFurniMutationBatch(ctx);
         }
     }
 
@@ -140,27 +177,32 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
     @Override
     public String getWiredData() {
         ArrayList<WiredChangeDirectionSetting> settings = new ArrayList<>(this.items.values());
-        return WiredManager.getGson().toJson(new JsonData(this.startRotation, this.blockedAction, settings, this.getDelay()));
+        return this.withSourceData(WiredManager.getGson().toJson(new JsonData(this.startRotation, this.blockedAction, this.blockOnUserCollision, settings, this.getDelay())));
     }
 
     @Override
     public void loadWiredData(ResultSet set, Room room) throws SQLException {
 
         this.items.clear();
+        this.runtimeItems.clear();
 
         String wiredData = set.getString("wired_data");
+        this.loadSourceData(wiredData);
 
         if(wiredData.startsWith("{")) {
             JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
             this.setDelay(data.delay);
-            this.startRotation = data.start_direction;
+            this.startRotation = data.start_direction != null ? data.start_direction : RoomUserRotation.NORTH;
             this.blockedAction = data.blocked_action;
+            this.blockOnUserCollision = data.block_user_collision == null || data.block_user_collision;
 
-            for(WiredChangeDirectionSetting setting : data.items) {
-                HabboItem item = room.getHabboItem(setting.item_id);
+            if (data.items != null) {
+                for(WiredChangeDirectionSetting setting : data.items) {
+                    HabboItem item = room.getHabboItem(setting.item_id);
 
-                if (item != null) {
-                    this.items.put(item, setting);
+                    if (item != null) {
+                        this.items.put(item, setting);
+                    }
                 }
             }
         }
@@ -171,6 +213,7 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
                 this.setDelay(Integer.parseInt(data[0]));
                 this.startRotation = RoomUserRotation.fromValue(Integer.parseInt(data[1]));
                 this.blockedAction = Integer.parseInt(data[2]);
+                this.blockOnUserCollision = true;
 
                 int itemCount = Integer.parseInt(data[3]);
 
@@ -203,8 +246,11 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
     public void onPickUp() {
         this.setDelay(0);
         this.items.clear();
+        this.runtimeItems.clear();
         this.blockedAction = 0;
+        this.blockOnUserCollision = true;
         this.startRotation = RoomUserRotation.NORTH;
+        this.resetSources();
     }
 
     @Override
@@ -223,9 +269,11 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
         message.appendInt(this.getBaseItem().getSpriteId());
         message.appendInt(this.getId());
         message.appendString("");
-        message.appendInt(2);
+        message.appendInt(4);
         message.appendInt(this.startRotation != null ? this.startRotation.getValue() : 0);
         message.appendInt(this.blockedAction);
+        message.appendInt(this.blockOnUserCollision ? 1 : 0);
+        message.appendInt(this.getFurniSource());
         message.appendInt(0);
         message.appendInt(this.getType().code);
         message.appendInt(this.getDelay());
@@ -238,7 +286,7 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
 
         int startDirectionInt = settings.getIntParams()[0];
 
-        if(startDirectionInt < 0 || startDirectionInt > 7 || (startDirectionInt % 2) != 0) {
+        if(startDirectionInt < 0 || startDirectionInt > 7) {
             throw new WiredSaveException("Start direction is invalid");
         }
 
@@ -249,6 +297,9 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
         if(blockedActionInt < 0 || blockedActionInt > 6) {
             throw new WiredSaveException("Blocked action is invalid");
         }
+
+        boolean blockOnUserCollision = settings.getIntParams().length < 3 || settings.getIntParams()[2] == 1;
+        this.saveFurniSource(settings, 3);
 
         int itemsCount = settings.getFurniIds().length;
 
@@ -275,8 +326,10 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
 
         this.items.clear();
         this.items.putAll(newItems);
+        this.runtimeItems.clear();
         this.startRotation = startDirection;
         this.blockedAction = blockedActionInt;
+        this.blockOnUserCollision = blockOnUserCollision;
         this.setDelay(delay);
 
         return true;
@@ -304,18 +357,20 @@ public class WiredEffectChangeFurniDirection extends InteractionWiredEffect {
 
     @Override
     protected long requiredCooldown() {
-        return 495;
+        return 45;
     }
 
     static class JsonData {
         RoomUserRotation start_direction;
         int blocked_action;
+        Boolean block_user_collision;
         List<WiredChangeDirectionSetting> items;
         int delay;
 
-        public JsonData(RoomUserRotation start_direction, int blocked_action, List<WiredChangeDirectionSetting> items, int delay) {
+        public JsonData(RoomUserRotation start_direction, int blocked_action, boolean block_user_collision, List<WiredChangeDirectionSetting> items, int delay) {
             this.start_direction = start_direction;
             this.blocked_action = blocked_action;
+            this.block_user_collision = block_user_collision;
             this.items = items;
             this.delay = delay;
         }

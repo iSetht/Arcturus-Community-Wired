@@ -18,9 +18,41 @@ public class RoomTileManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(RoomTileManager.class);
 
     private final Room room;
+    private final ThreadLocal<TileUpdateBatch> updateBatch = new ThreadLocal<>();
 
     public RoomTileManager(Room room) {
         this.room = room;
+    }
+
+    /**
+     * Defers height-map packets while still recalculating every changed tile immediately.
+     * This keeps collision checks correct during a large wired movement while avoiding one
+     * broadcast per item.
+     */
+    public void beginUpdateBatch() {
+        TileUpdateBatch batch = this.updateBatch.get();
+        if (batch == null) {
+            batch = new TileUpdateBatch();
+            this.updateBatch.set(batch);
+        }
+        batch.depth++;
+    }
+
+    public void endUpdateBatch() {
+        TileUpdateBatch batch = this.updateBatch.get();
+        if (batch == null) {
+            return;
+        }
+
+        batch.depth--;
+        if (batch.depth > 0) {
+            return;
+        }
+
+        this.updateBatch.remove();
+        if (!batch.tiles.isEmpty()) {
+            this.room.sendComposer(new com.eu.habbo.messages.outgoing.rooms.UpdateStackHeightComposer(this.room, batch.tiles).compose());
+        }
     }
 
     /**
@@ -39,14 +71,47 @@ public class RoomTileManager {
      * Updates multiple tiles and sends the update to clients.
      */
     public void updateTiles(THashSet<RoomTile> tiles) {
+        if (tiles == null || tiles.isEmpty()) {
+            return;
+        }
+
+        THashSet<RoomTile> changedTiles = new THashSet<>();
         for (RoomTile tile : tiles) {
+            if (tile == null) {
+                continue;
+            }
+
+            double oldStackHeight = tile.getStackHeight();
+            RoomTileState oldState = tile.state;
+            boolean oldAllowStack = tile.getAllowStack();
             this.room.tileCache.remove(tile);
             this.room.getItemManager().tileCache.remove(tile);
             tile.setStackHeight(this.getStackHeight(tile.x, tile.y, false));
             tile.setState(this.calculateTileState(tile));
+
+            if (Double.compare(oldStackHeight, tile.getStackHeight()) != 0
+                    || oldState != tile.state
+                    || oldAllowStack != tile.getAllowStack()) {
+                changedTiles.add(tile);
+            }
         }
 
-        this.room.sendComposer(new com.eu.habbo.messages.outgoing.rooms.UpdateStackHeightComposer(this.room, tiles).compose());
+        if (changedTiles.isEmpty()) {
+            return;
+        }
+
+        TileUpdateBatch batch = this.updateBatch.get();
+        if (batch != null) {
+            batch.tiles.addAll(changedTiles);
+            return;
+        }
+
+        this.room.sendComposer(new com.eu.habbo.messages.outgoing.rooms.UpdateStackHeightComposer(this.room, changedTiles).compose());
+    }
+
+    private static final class TileUpdateBatch {
+        private int depth;
+        private final THashSet<RoomTile> tiles = new THashSet<>();
     }
 
     /**

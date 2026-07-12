@@ -10,7 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class WiredConditionNotMatchStatePosition extends WiredConditionMatchStatePosition {
-    public static final WiredConditionType type = WiredConditionType.NOT_MATCH_SSHOT;
+    public static final WiredConditionType type = WiredConditionType.NOT_STATE_POSITION_MATCH;
 
     public WiredConditionNotMatchStatePosition(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
@@ -22,7 +22,7 @@ public class WiredConditionNotMatchStatePosition extends WiredConditionMatchStat
 
     @Override
     public boolean evaluate(WiredContext ctx) {
-        return !super.evaluate(ctx);
+        return !this.matchesCondition(ctx);
     }
 
     @Deprecated

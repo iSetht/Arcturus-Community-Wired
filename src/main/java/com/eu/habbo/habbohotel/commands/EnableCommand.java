@@ -2,6 +2,7 @@ package com.eu.habbo.habbohotel.commands;
 
 import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.gameclients.GameClient;
+import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectFreezeAvatar;
 import com.eu.habbo.habbohotel.permissions.Permission;
 import com.eu.habbo.habbohotel.rooms.RoomChatMessageBubbles;
 import com.eu.habbo.habbohotel.users.Habbo;
@@ -34,6 +35,10 @@ public class EnableCommand extends Command {
                     try {
                         if (target.getHabboInfo().getCurrentRoom() != null) {
                             if (target.getHabboInfo().getRiding() == null) {
+                                if (WiredEffectFreezeAvatar.isWiredFrozen(target.getRoomUnit())) {
+                                    return true;
+                                }
+
                                 if (Emulator.getGameEnvironment().getPermissionsManager().isEffectBlocked(effectId, target.getHabboInfo().getRank().getId())) {
                                     gameClient.getHabbo().whisper(Emulator.getTexts().getValue("commands.error.cmd_enable.not_allowed"), RoomChatMessageBubbles.ALERT);
                                     return true;

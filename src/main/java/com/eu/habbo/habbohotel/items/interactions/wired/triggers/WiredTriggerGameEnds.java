@@ -69,13 +69,14 @@ public class WiredTriggerGameEnds extends InteractionWiredTrigger {
         message.appendInt(0);
         message.appendInt(0);
         message.appendInt(this.getType().code);
+        message.appendInt(0);
 
         if (!this.isTriggeredByRoomUnit()) {
             List<Integer> invalidTriggers = new ArrayList<>();
             room.getRoomSpecialTypes().getEffects(this.getX(), this.getY()).forEach(new TObjectProcedure<InteractionWiredEffect>() {
                 @Override
                 public boolean execute(InteractionWiredEffect object) {
-                    if (object.requiresTriggeringUser()) {
+                    if (object.requiresActor()) {
                         invalidTriggers.add(object.getBaseItem().getSpriteId());
                     }
                     return true;

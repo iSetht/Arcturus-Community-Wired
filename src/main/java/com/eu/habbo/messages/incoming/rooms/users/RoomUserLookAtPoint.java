@@ -1,10 +1,13 @@
 package com.eu.habbo.messages.incoming.rooms.users;
 
+import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
+import com.eu.habbo.habbohotel.items.interactions.wired.triggers.WiredTriggerAvatarClicksAvatar;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.rooms.RoomUnitStatus;
 import com.eu.habbo.habbohotel.users.Habbo;
+import com.eu.habbo.habbohotel.wired.WiredTriggerType;
 import com.eu.habbo.messages.incoming.MessageHandler;
 
 public class RoomUserLookAtPoint extends MessageHandler {
@@ -45,6 +48,12 @@ public class RoomUserLookAtPoint extends MessageHandler {
 
         if (x == roomUnit.getX() && y == roomUnit.getY())
             return;
+
+        for (InteractionWiredTrigger item : room.getRoomSpecialTypes().getTriggers(WiredTriggerType.CLICK_AVATAR)) {
+            if (item instanceof WiredTriggerAvatarClicksAvatar) {
+                if (((WiredTriggerAvatarClicksAvatar) item).getDoNotRotate() == 1) return;
+            }
+        }
 
         RoomTile tile = habbo.getHabboInfo().getCurrentRoom().getLayout().getTile((short) x, (short) y);
 

@@ -69,4 +69,13 @@ public interface IWiredTrigger {
     default boolean requiresActor() {
         return false;
     }
+
+    /**
+     * Check if this trigger should hide the original chat message when it fires.
+     *
+     * @return true if the triggering chat message should be hidden
+     */
+    default boolean shouldHideChatMessage() {
+        return false;
+    }
 }

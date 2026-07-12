@@ -13,6 +13,7 @@ import com.eu.habbo.habbohotel.items.interactions.games.InteractionGameTimer;
 import com.eu.habbo.habbohotel.rooms.*;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredMovement;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserDanceComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserDataComposer;
@@ -211,7 +212,7 @@ public abstract class HabboItem implements Runnable, IEventTriggers {
     }
 
     public void setExtradata(String extradata) {
-        this.extradata = extradata;
+        this.extradata = (extradata == null || extradata.isEmpty()) ? "0" : extradata;
     }
 
     public boolean needsUpdate() {
@@ -289,13 +290,15 @@ public abstract class HabboItem implements Runnable, IEventTriggers {
     public void onClick(GameClient client, Room room, Object[] objects) throws Exception {
         if (client != null && this.getBaseItem().getType() == FurnitureType.FLOOR) {
             if (objects != null && objects.length >= 2) {
-                if (objects[1] instanceof WiredEffectType) {
+                if (objects[1] instanceof WiredEffectType && this.getBaseItem().getStateCount() > 1) {
+                    WiredManager.triggerNewFurniStateChange(room, this);
                     return;
                 }
             }
 
             if ((this.getBaseItem().getStateCount() > 1 && !(this instanceof InteractionDice)) || Arrays.asList(HabboItem.TOGGLING_INTERACTIONS).contains(this.getClass()) || (objects != null && objects.length == 1 && objects[0].equals("TOGGLE_OVERRIDE"))) {
                 WiredManager.triggerFurniStateChanged(room, client.getHabbo().getRoomUnit(), this);
+                WiredManager.triggerNewFurniStateChange(room, this);
             }
         }
     }
@@ -305,7 +308,11 @@ public abstract class HabboItem implements Runnable, IEventTriggers {
         /*if (objects != null && objects.length >= 1 && objects[0] instanceof InteractionWired)
             return;*/
 
-        WiredManager.triggerUserWalksOn(room, roomUnit, this);
+        if (!WiredMovement.isFurniActivelyMoving(room, this)
+                || WiredMovement.consumeDepartingFurniWalkOn(room, this, roomUnit, objects)
+                || WiredMovement.isWalkOnAtCurrentFurniPosition(room, this, objects)) {
+            WiredManager.triggerUserWalksOn(room, roomUnit, this);
+        }
 
         if ((this.getBaseItem().allowSit() || this.getBaseItem().allowLay()) && !roomUnit.getDanceType().equals(DanceType.NONE)) {
             roomUnit.setDanceType(DanceType.NONE);
@@ -329,7 +336,7 @@ public abstract class HabboItem implements Runnable, IEventTriggers {
 
     @Override
     public void onWalkOff(RoomUnit roomUnit, Room room, Object[] objects) throws Exception {
-        if(objects != null && objects.length > 0) {
+        if(objects != null && objects.length > 0 && !WiredMovement.isFurniActivelyMoving(room, this)) {
             WiredManager.triggerUserWalksOff(room, roomUnit, this);
         }
     }

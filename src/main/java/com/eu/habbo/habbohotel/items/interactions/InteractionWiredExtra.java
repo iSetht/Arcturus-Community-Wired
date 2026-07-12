@@ -2,8 +2,12 @@ package com.eu.habbo.habbohotel.items.interactions;
 
 import com.eu.habbo.habbohotel.gameclients.GameClient;
 import com.eu.habbo.habbohotel.items.Item;
+import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
+import com.eu.habbo.messages.outgoing.wired.WiredExtraDataComposer;
+
+import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -20,10 +24,15 @@ public abstract class InteractionWiredExtra extends InteractionWired {
     @Override
     public void onClick(GameClient client, Room room, Object[] objects) throws Exception {
         if (client != null) {
-            if (room.hasRights(client.getHabbo())) {
+            if (room.canInspectWired(client.getHabbo())) {
+                client.sendResponse(new WiredExtraDataComposer(this, room, client.getHabbo()));
                 this.activateBox(room);
             }
         }
+    }
+
+    public boolean saveData(WiredSettings settings, GameClient gameClient) throws WiredSaveException {
+        return true;
     }
 
     @Override

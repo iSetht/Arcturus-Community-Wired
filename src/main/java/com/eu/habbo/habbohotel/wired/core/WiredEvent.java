@@ -6,7 +6,12 @@ import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredTriggerType;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Immutable event representing what happened in the room that triggered wired execution.
@@ -35,7 +40,7 @@ public final class WiredEvent {
      */
     public enum Type {
         /** User says something in chat */
-        USER_SAYS(WiredTriggerType.SAY_SOMETHING),
+        USER_SAYS(WiredTriggerType.SAYS_KEYWORD),
         
         /** User walks onto furniture */
         USER_WALKS_ON(WiredTriggerType.WALKS_ON_FURNI),
@@ -44,19 +49,25 @@ public final class WiredEvent {
         USER_WALKS_OFF(WiredTriggerType.WALKS_OFF_FURNI),
         
         /** Furniture state is toggled/changed */
-        FURNI_STATE_CHANGED(WiredTriggerType.STATE_CHANGED),
+        FURNI_STATE_CHANGED(WiredTriggerType.FURNI_USED),
         
         /** Timer fires at a given time */
-        TIMER_TICK(WiredTriggerType.AT_GIVEN_TIME),
+        TIMER_TICK(WiredTriggerType.AT_SET_TIME),
         
         /** Timer fires periodically/repeatedly */
         TIMER_REPEAT(WiredTriggerType.PERIODICALLY),
         
         /** Long timer repeat */
         TIMER_REPEAT_LONG(WiredTriggerType.PERIODICALLY_LONG),
+
+        /** Long timer repeat */
+        TIMER_REPEAT_SHORT(WiredTriggerType.PERIODICALLY_SHORT),
         
         /** User enters the room */
         USER_ENTERS_ROOM(WiredTriggerType.ENTER_ROOM),
+
+        /** User leaves the room */
+        USER_LEAVES_ROOM(WiredTriggerType.LEAVE_ROOM),
         
         /** Game starts */
         GAME_STARTS(WiredTriggerType.GAME_STARTS),
@@ -68,34 +79,46 @@ public final class WiredEvent {
         BOT_COLLISION(WiredTriggerType.COLLISION),
         
         /** Bot reached furniture (STF = stack tile furni) */
-        BOT_REACHED_FURNI(WiredTriggerType.BOT_REACHED_STF),
+        BOT_REACHED_FURNI(WiredTriggerType.BOT_REACHES_FURNI),
         
         /** Bot reached habbo (AVTR = avatar) */
-        BOT_REACHED_HABBO(WiredTriggerType.BOT_REACHED_AVTR),
+        BOT_REACHED_HABBO(WiredTriggerType.BOT_REACHES_AVATAR),
         
         /** Score threshold achieved */
         SCORE_ACHIEVED(WiredTriggerType.SCORE_ACHIEVED),
         
-        /** User starts idling */
-        USER_IDLES(WiredTriggerType.IDLES),
-        
-        /** User stops idling */
-        USER_UNIDLES(WiredTriggerType.UNIDLES),
-        
-        /** User starts dancing */
-        USER_STARTS_DANCING(WiredTriggerType.STARTS_DANCING),
-        
-        /** User stops dancing */
-        USER_STOPS_DANCING(WiredTriggerType.STOPS_DANCING),
-        
-        /** Team wins a game */
-        TEAM_WINS(WiredTriggerType.CUSTOM),
-        
-        /** Team loses a game */
-        TEAM_LOSES(WiredTriggerType.CUSTOM),
-        
-        /** Custom trigger type for plugins */
-        CUSTOM(WiredTriggerType.CUSTOM);
+        /** Detects when a user clicks furni */
+        USER_CLICKS_FURNI(WiredTriggerType.CLICK_FURNI),
+
+        /** Detects when a user clicks user */
+        USER_CLICKS_USER(WiredTriggerType.CLICK_AVATAR),
+
+        /** Detects when furni state changes */
+        NEW_FURNI_STATE_CHANGE(WiredTriggerType.FURNI_STATE_CHANGED),
+
+        /** Detects when a user performs an action */
+        PERFORM_ACTION(WiredTriggerType.PERFORM_ACTION),
+
+        /** Detects when a game_timer hits a specific set time */
+        COUNTER_REACHES_SET_TIME(WiredTriggerType.COUNTER_REACHES_SET_TIME),
+
+        /** Detects when a user clicks a tile/invisible tile */
+        USER_CLICKS_TILE(WiredTriggerType.CLICK_TILE),
+
+        /** Receives a signal sent to antenna furniture */
+        RECEIVE_SIGNAL(WiredTriggerType.RECEIVE_SIGNAL),
+
+        /** Variable value was created, updated, or deleted */
+        VARIABLE_CHANGED(WiredTriggerType.VARIABLE_CHANGED),
+
+        /** User released a mouse hold that began inside the room canvas */
+        USER_RELEASES(WiredTriggerType.USER_RELEASES),
+
+        /** A chest-backed transaction completed successfully */
+        TRANSACTION_COMPLETED(WiredTriggerType.TRANSACTION_COMPLETED),
+
+        /** A chest-backed transaction failed or was cancelled */
+        TRANSACTION_FAILED(WiredTriggerType.TRANSACTION_FAILED);
 
         private final WiredTriggerType legacyType;
 
@@ -122,7 +145,7 @@ public final class WiredEvent {
                     return type;
                 }
             }
-            return CUSTOM;
+            throw new IllegalArgumentException("Unsupported wired trigger type: " + legacyType);
         }
     }
 
@@ -138,6 +161,24 @@ public final class WiredEvent {
     private final boolean triggeredByEffect; // true if triggered by a wired effect (to prevent loops)
     private final int callStackDepth;   // recursion depth for trigger stacks effect
     private final long createdAtMs;
+    private final int actionValue;  // action done
+    private final int actionIndexValue; // action index if a sign or dance
+    private final int chatType;
+    private final int chatStyle;
+    private final List<HabboItem> signalItems;
+    private final List<RoomUnit> signalUsers;
+    private final int variableType;
+    private final String variableName;
+    private final int variableOwnerType;
+    private final int variableOwnerId;
+    private final int variableAction;
+    private final long oldVariableValue;
+    private final long newVariableValue;
+    private final int variableChangeOrigin;
+    private final Map<Integer, String> itemStateSnapshots;
+    private final Map<Integer, List<HabboItem>> selectorItemCache = new ConcurrentHashMap<>();
+    private final Map<Integer, List<RoomUnit>> selectorUserCache = new ConcurrentHashMap<>();
+    private boolean hideChatMessage;
 
     private WiredEvent(Builder builder) {
         this.type = builder.type;
@@ -152,6 +193,21 @@ public final class WiredEvent {
         this.triggeredByEffect = builder.triggeredByEffect;
         this.callStackDepth = builder.callStackDepth;
         this.createdAtMs = builder.createdAtMs;
+        this.actionValue = builder.actionValue;
+        this.actionIndexValue = builder.actionIndexValue;
+        this.chatType = builder.chatType;
+        this.chatStyle = builder.chatStyle;
+        this.signalItems = Collections.unmodifiableList(new ArrayList<>(builder.signalItems));
+        this.signalUsers = Collections.unmodifiableList(new ArrayList<>(builder.signalUsers));
+        this.variableType = builder.variableType;
+        this.variableName = builder.variableName;
+        this.variableOwnerType = builder.variableOwnerType;
+        this.variableOwnerId = builder.variableOwnerId;
+        this.variableAction = builder.variableAction;
+        this.oldVariableValue = builder.oldVariableValue;
+        this.newVariableValue = builder.newVariableValue;
+        this.variableChangeOrigin = builder.variableChangeOrigin;
+        this.itemStateSnapshots = Collections.unmodifiableMap(new ConcurrentHashMap<>(builder.itemStateSnapshots));
     }
 
     // Getters
@@ -215,6 +271,50 @@ public final class WiredEvent {
         return Optional.ofNullable(targetUnit);
     }
 
+    public List<HabboItem> getSignalItems() {
+        return signalItems;
+    }
+
+    public List<RoomUnit> getSignalUsers() {
+        return signalUsers;
+    }
+
+    public int getVariableType() {
+        return variableType;
+    }
+
+    public Optional<String> getVariableName() {
+        return Optional.ofNullable(variableName);
+    }
+
+    public int getVariableOwnerType() {
+        return variableOwnerType;
+    }
+
+    public int getVariableOwnerId() {
+        return variableOwnerId;
+    }
+
+    public int getVariableAction() {
+        return variableAction;
+    }
+
+    public long getOldVariableValue() {
+        return oldVariableValue;
+    }
+
+    public long getNewVariableValue() {
+        return newVariableValue;
+    }
+
+    public int getVariableChangeOrigin() {
+        return variableChangeOrigin;
+    }
+
+    public Optional<String> getItemStateSnapshot(int itemId) {
+        return Optional.ofNullable(this.itemStateSnapshots.get(itemId));
+    }
+
     /**
      * Get the score value for score achieved events.
      * @return the current score
@@ -229,6 +329,30 @@ public final class WiredEvent {
      */
     public int getScoreAdded() {
         return scoreAdded;
+    }
+
+    /**
+     * Get the action
+     * @return the action num
+     */
+    public int getActionValue() {
+        return actionValue;
+    }
+
+    /**
+     * Get the action index
+     * @return the action num
+     */
+    public int getActionIndexValue() {
+        return actionIndexValue;
+    }
+
+    public int getChatType() {
+        return chatType;
+    }
+
+    public int getChatStyle() {
+        return chatStyle;
     }
 
     /**
@@ -257,6 +381,32 @@ public final class WiredEvent {
         return createdAtMs;
     }
 
+    public boolean shouldHideChatMessage() {
+        return hideChatMessage;
+    }
+
+    public void hideChatMessage() {
+        this.hideChatMessage = true;
+    }
+
+    List<HabboItem> getCachedSelectorItems(int wiredItemId) {
+        List<HabboItem> cachedItems = this.selectorItemCache.get(wiredItemId);
+        return cachedItems == null ? null : new ArrayList<>(cachedItems);
+    }
+
+    void cacheSelectorItems(int wiredItemId, List<HabboItem> items) {
+        this.selectorItemCache.put(wiredItemId, Collections.unmodifiableList(new ArrayList<>(items)));
+    }
+
+    List<RoomUnit> getCachedSelectorUsers(int wiredItemId) {
+        List<RoomUnit> cachedUsers = this.selectorUserCache.get(wiredItemId);
+        return cachedUsers == null ? null : new ArrayList<>(cachedUsers);
+    }
+
+    void cacheSelectorUsers(int wiredItemId, List<RoomUnit> users) {
+        this.selectorUserCache.put(wiredItemId, Collections.unmodifiableList(new ArrayList<>(users)));
+    }
+
     /**
      * Create a new builder for constructing events.
      * @param type the event type (required)
@@ -275,6 +425,37 @@ public final class WiredEvent {
      */
     public static Builder fromLegacy(WiredTriggerType legacyType, Room room) {
         return new Builder(Type.fromLegacyType(legacyType), room);
+    }
+
+    /**
+     * Copy this event with an updated call stack depth.
+     * Used when an execute-stacks effect runs effects from another stack while
+     * preserving the original trigger context.
+     *
+     * @param callStackDepth the updated recursion depth
+     * @return copied event with the new depth
+     */
+    public WiredEvent withCallStackDepth(int callStackDepth) {
+        return builder(this.type, this.room)
+                .actor(this.actor)
+                .sourceItem(this.sourceItem)
+                .tile(this.tile)
+                .text(this.text)
+                .targetUnit(this.targetUnit)
+                .score(this.score)
+                .scoreAdded(this.scoreAdded)
+                .actionValue(this.actionValue)
+                .actionIndexValue(this.actionIndexValue)
+                .chat(this.chatType, this.chatStyle)
+                .signalItems(this.signalItems)
+                .signalUsers(this.signalUsers)
+                .variableChange(this.variableType, this.variableName, this.variableOwnerType, this.variableOwnerId, this.variableAction, this.oldVariableValue, this.newVariableValue)
+                .variableChangeOrigin(this.variableChangeOrigin)
+                .itemStateSnapshots(this.itemStateSnapshots)
+                .triggeredByEffect(this.triggeredByEffect)
+                .callStackDepth(callStackDepth)
+                .createdAtMs(this.createdAtMs)
+                .build();
     }
 
     @Override
@@ -304,6 +485,21 @@ public final class WiredEvent {
         private boolean triggeredByEffect;
         private int callStackDepth;
         private long createdAtMs = System.currentTimeMillis();
+        private int actionValue;
+        private int actionIndexValue;
+        private int chatType;
+        private int chatStyle;
+        private List<HabboItem> signalItems = Collections.emptyList();
+        private List<RoomUnit> signalUsers = Collections.emptyList();
+        private int variableType = -1;
+        private String variableName;
+        private int variableOwnerType;
+        private int variableOwnerId;
+        private int variableAction;
+        private long oldVariableValue;
+        private long newVariableValue;
+        private int variableChangeOrigin;
+        private Map<Integer, String> itemStateSnapshots = Collections.emptyMap();
 
         private Builder(Type type, Room room) {
             if (type == null) throw new IllegalArgumentException("Event type cannot be null");
@@ -379,6 +575,63 @@ public final class WiredEvent {
          */
         public Builder scoreAdded(int scoreAdded) {
             this.scoreAdded = scoreAdded;
+            return this;
+        }
+
+        /**
+         * Set the action num
+         * @param actionValue the action num
+         * @return this builder
+         */
+        public Builder actionValue(int actionValue) {
+            this.actionValue = actionValue;
+            return this;
+        }
+
+        /**
+         * Set the action index num
+         * @param actionIndexValue the action num
+         * @return this builder
+         */
+        public Builder actionIndexValue(int actionIndexValue) {
+            this.actionIndexValue = actionIndexValue;
+            return this;
+        }
+
+        public Builder signalItems(List<HabboItem> signalItems) {
+            this.signalItems = signalItems != null ? signalItems : Collections.emptyList();
+            return this;
+        }
+
+        public Builder signalUsers(List<RoomUnit> signalUsers) {
+            this.signalUsers = signalUsers != null ? signalUsers : Collections.emptyList();
+            return this;
+        }
+
+        public Builder chat(int chatType, int chatStyle) {
+            this.chatType = chatType;
+            this.chatStyle = chatStyle;
+            return this;
+        }
+
+        public Builder variableChange(int variableType, String variableName, int ownerType, int ownerId, int action, long oldValue, long newValue) {
+            this.variableType = variableType;
+            this.variableName = variableName;
+            this.variableOwnerType = ownerType;
+            this.variableOwnerId = ownerId;
+            this.variableAction = action;
+            this.oldVariableValue = oldValue;
+            this.newVariableValue = newValue;
+            return this;
+        }
+
+        public Builder variableChangeOrigin(int variableChangeOrigin) {
+            this.variableChangeOrigin = variableChangeOrigin;
+            return this;
+        }
+
+        public Builder itemStateSnapshots(Map<Integer, String> itemStateSnapshots) {
+            this.itemStateSnapshots = itemStateSnapshots != null ? itemStateSnapshots : Collections.emptyMap();
             return this;
         }
 

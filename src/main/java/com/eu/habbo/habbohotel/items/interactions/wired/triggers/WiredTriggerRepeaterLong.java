@@ -99,13 +99,14 @@ public class WiredTriggerRepeaterLong extends InteractionWiredTrigger implements
         message.appendInt(this.repeatTime / 5000);
         message.appendInt(0);
         message.appendInt(this.getType().code);
+        message.appendInt(0);
 
         if (!this.isTriggeredByRoomUnit()) {
             List<Integer> invalidTriggers = new ArrayList<>();
             room.getRoomSpecialTypes().getEffects(this.getX(), this.getY()).forEach(new TObjectProcedure<InteractionWiredEffect>() {
                 @Override
                 public boolean execute(InteractionWiredEffect object) {
-                    if (object.requiresTriggeringUser()) {
+                    if (object.requiresActor()) {
                         invalidTriggers.add(object.getBaseItem().getSpriteId());
                     }
                     return true;
@@ -123,8 +124,14 @@ public class WiredTriggerRepeaterLong extends InteractionWiredTrigger implements
     @Override
     public boolean saveData(WiredSettings settings) {
         if (settings.getIntParams().length < 1) return false;
-        this.repeatTime = settings.getIntParams()[0] * 5000;
-        // No accumulated time reset needed - using global tick count
+        int newRepeatTime = settings.getIntParams()[0] * 5000; 
+
+        if (newRepeatTime < 5000) {
+            newRepeatTime = 5000;
+        }
+
+        this.repeatTime = newRepeatTime;
+        
         return true;
     }
 
@@ -139,7 +146,7 @@ public class WiredTriggerRepeaterLong extends InteractionWiredTrigger implements
         // Fire when elapsed time is a multiple of repeat time
         if (elapsedMs % this.repeatTime == 0) {
             if (this.getRoomId() != 0 && room.isLoaded()) {
-                WiredManager.triggerTimerRepeat(room, this);
+                WiredManager.triggerTimerRepeatLong(room, this);
             }
         }
     }

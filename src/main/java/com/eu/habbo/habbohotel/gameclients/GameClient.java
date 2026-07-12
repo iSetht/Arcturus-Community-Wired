@@ -132,6 +132,10 @@ public class GameClient {
 
             if (this.habbo != null) {
                 if (this.habbo.isOnline()) {
+                    if (Emulator.getGameEnvironment() != null && Emulator.getGameEnvironment().getChestManager() != null) {
+                        Emulator.getGameEnvironment().getChestManager().cancelDeposit(this.habbo, 25);
+                    }
+
                     this.habbo.getHabboInfo().setOnline(false);
                     this.habbo.disconnect();
                 }

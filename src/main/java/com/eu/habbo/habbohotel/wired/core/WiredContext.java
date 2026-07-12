@@ -7,6 +7,8 @@ import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.api.WiredStack;
 
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Context object passed to conditions and effects during wired execution.
@@ -49,6 +51,7 @@ public final class WiredContext {
     private final WiredServices services;
     private final WiredState state;
     private final WiredTargets targets;
+    private final ConcurrentHashMap<Object, Object> executionCache = new ConcurrentHashMap<>();
     
     /** The wired trigger furniture item executing this stack */
     private final HabboItem triggerItem;
@@ -243,6 +246,16 @@ public final class WiredContext {
      */
     public WiredState state() {
         return state;
+    }
+
+    /**
+     * Memoizes data that is immutable for this single stack execution. This is intended for
+     * resolved extras whose selector sets would otherwise be rebuilt once per affected item.
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T cached(Object key, Supplier<T> supplier) {
+        if (key == null || supplier == null) return null;
+        return (T) this.executionCache.computeIfAbsent(key, ignored -> supplier.get());
     }
 
     // ========== Legacy Support ==========

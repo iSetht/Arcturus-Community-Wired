@@ -21,6 +21,9 @@ public class HabboGiveHandItemToHabbo implements Runnable {
         if (this.from.getHabboInfo().getCurrentRoom() != this.target.getHabboInfo().getCurrentRoom())
             return;
 
+        if (this.from.getHabboInfo().getCurrentRoom().isHanditemPassingBlocked())
+            return;
+
         int itemId = this.from.getRoomUnit().getHandItem();
 
         if (itemId > 0) {

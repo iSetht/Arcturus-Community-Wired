@@ -16,7 +16,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class WiredConditionTeamMember extends InteractionWiredCondition {
-    public static final WiredConditionType type = WiredConditionType.ACTOR_IN_TEAM;
+    public static final WiredConditionType type = WiredConditionType.NOT_AVATAR_IN_TEAM;
 
     private GameTeamColors teamColor = GameTeamColors.RED;
 

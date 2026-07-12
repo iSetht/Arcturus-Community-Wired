@@ -77,6 +77,9 @@ public final class WiredTickService {
     
     /** The scheduled future for the tick task */
     private ScheduledFuture<?> tickTask;
+
+    /** Monotonic deadline used to keep 50ms cadence without replaying overdue ticks. */
+    private volatile long nextTickDeadlineNanos;
     
     /** Map of room ID to set of registered tickables */
     private final ConcurrentHashMap<Integer, Set<WiredTickable>> roomTickables;
@@ -172,14 +175,9 @@ public final class WiredTickService {
             return t;
         });
         
-        this.tickTask = scheduler.scheduleAtFixedRate(
-            this::tick,
-            tickIntervalMs,
-            tickIntervalMs,
-            TimeUnit.MILLISECONDS
-        );
-        
         running.set(true);
+        this.nextTickDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(tickIntervalMs);
+        this.scheduleTick(TimeUnit.MILLISECONDS.toNanos(tickIntervalMs));
         LOGGER.info("WiredTickService started successfully");
     }
     
@@ -397,6 +395,18 @@ public final class WiredTickService {
         if (!running.get() || Emulator.isShuttingDown) {
             return;
         }
+
+        try {
+            this.processTick();
+        } finally {
+            this.scheduleFollowingTick();
+        }
+    }
+
+    private void processTick() {
+        if (!running.get() || Emulator.isShuttingDown) {
+            return;
+        }
         
         // Increment global tick counter
         tickCount++;
@@ -449,6 +459,40 @@ public final class WiredTickService {
             LOGGER.debug("Wired tick #{} completed: {} tickables processed in {}ms", 
                 tickCount, tickablesProcessed, System.currentTimeMillis() - startTime);
         }
+    }
+
+    private void scheduleFollowingTick() {
+        if (!running.get() || Emulator.isShuttingDown || this.scheduler == null) {
+            return;
+        }
+
+        long intervalNanos = TimeUnit.MILLISECONDS.toNanos(this.tickIntervalMs);
+        long now = System.nanoTime();
+        long nextDeadline = this.nextTickDeadlineNanos + intervalNanos;
+
+        // A fixed-rate ScheduledExecutor replays every overdue invocation. Under a
+        // heavy selector stack that turns temporary overload into an ever-growing
+        // movement/packet backlog. Advance to the next future slot instead.
+        if (nextDeadline <= now) {
+            long missedTicks = ((now - nextDeadline) / intervalNanos) + 1L;
+            nextDeadline += missedTicks * intervalNanos;
+
+            if (this.debugEnabled) {
+                LOGGER.debug("Wired tick overran; coalesced {} overdue tick(s)", missedTicks);
+            }
+        }
+
+        this.nextTickDeadlineNanos = nextDeadline;
+        this.scheduleTick(Math.max(0L, nextDeadline - now));
+    }
+
+    private void scheduleTick(long delayNanos) {
+        ScheduledExecutorService activeScheduler = this.scheduler;
+        if (!running.get() || activeScheduler == null || activeScheduler.isShutdown()) {
+            return;
+        }
+
+        this.tickTask = activeScheduler.schedule(this::tick, delayNanos, TimeUnit.NANOSECONDS);
     }
     
     /**

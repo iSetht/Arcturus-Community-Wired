@@ -3,6 +3,7 @@ package com.eu.habbo.habbohotel.wired.highscores;
 import com.eu.habbo.Emulator;
 import com.eu.habbo.plugin.EventHandler;
 import com.eu.habbo.plugin.events.emulator.EmulatorLoadedEvent;
+import com.eu.habbo.habbohotel.users.HabboInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -96,17 +97,52 @@ public class WiredHighscoreManager {
         }
     }
 
+    public boolean deleteHighscoreRowForItem(int itemId, WiredHighscoreClearType clearType, WiredHighscoreScoreType scoreType, int rowIndex) {
+        List<WiredHighscoreRow> rows = this.getHighscoreRowsForItem(itemId, clearType, scoreType);
+        if (rows == null || rowIndex < 0 || rowIndex >= rows.size()) return false;
+
+        WiredHighscoreRow row = rows.get(rowIndex);
+        List<WiredHighscoreDataEntry> entries = this.data.get(itemId);
+        if (entries == null || entries.isEmpty()) return false;
+
+        List<Integer> userIds = new ArrayList<>(row.getUserIds());
+        int score = row.getValue();
+
+        List<WiredHighscoreDataEntry> removed = entries.stream()
+                .filter(entry -> this.matchesDeletedRow(entry, clearType, scoreType, userIds, score))
+                .collect(Collectors.toList());
+
+        if (removed.isEmpty()) return false;
+
+        entries.removeAll(removed);
+        if (entries.isEmpty()) {
+            this.data.remove(itemId);
+        }
+
+        try (Connection connection = Emulator.getDatabase().getDataSource().getConnection(); PreparedStatement statement = connection.prepareStatement("DELETE FROM `items_highscore_data` WHERE `item_id` = ? AND `user_ids` = ? AND `score` = ? AND `is_win` = ? AND `timestamp` = ?")) {
+            for (WiredHighscoreDataEntry entry : removed) {
+                statement.setInt(1, entry.getItemId());
+                statement.setString(2, String.join(",", entry.getUserIds().stream().map(Object::toString).collect(Collectors.toList())));
+                statement.setInt(3, entry.getScore());
+                statement.setInt(4, entry.isWin() ? 1 : 0);
+                statement.setInt(5, entry.getTimestamp());
+                statement.addBatch();
+            }
+
+            statement.executeBatch();
+        } catch (SQLException e) {
+            LOGGER.error("Caught SQL exception", e);
+        }
+
+        return true;
+    }
+
     public List<WiredHighscoreRow> getHighscoreRowsForItem(int itemId, WiredHighscoreClearType clearType, WiredHighscoreScoreType scoreType) {
         if (!this.data.containsKey(itemId)) return null;
 
         Stream<WiredHighscoreRow> highscores = new ArrayList<>(this.data.get(itemId)).stream()
                 .filter(entry -> this.timeMatchesEntry(entry, clearType) && (scoreType != WiredHighscoreScoreType.MOSTWIN || entry.isWin()))
-                .map(entry -> new WiredHighscoreRow(
-                        entry.getUserIds().stream()
-                                .map(id -> Emulator.getGameEnvironment().getHabboManager().getHabboInfo(id).getUsername())
-                                .collect(Collectors.toList()),
-                        entry.getScore()
-                ));
+                .map(this::createHighscoreRow);
 
         if (scoreType == WiredHighscoreScoreType.CLASSIC) {
             return highscores.sorted(WiredHighscoreRow::compareTo).collect(Collectors.toList());
@@ -131,12 +167,45 @@ public class WiredHighscoreManager {
                     .collect(Collectors.groupingBy(h -> h.getUsers().hashCode()))
                     .entrySet()
                     .stream()
-                    .map(e -> new WiredHighscoreRow(e.getValue().get(0).getUsers(), e.getValue().size()))
+                    .map(e -> new WiredHighscoreRow(e.getValue().get(0).getUsers(), e.getValue().get(0).getLooks(), e.getValue().get(0).getUserIds(), e.getValue().size()))
                     .sorted(WiredHighscoreRow::compareTo)
                     .collect(Collectors.toList());
         }
 
         return null;
+    }
+
+    private WiredHighscoreRow createHighscoreRow(WiredHighscoreDataEntry entry) {
+        List<String> users = new ArrayList<>();
+        List<String> looks = new ArrayList<>();
+        List<Integer> userIds = new ArrayList<>();
+
+        for (Integer userId : entry.getUserIds()) {
+            HabboInfo info = Emulator.getGameEnvironment().getHabboManager().getHabboInfo(userId);
+
+            if (info == null) continue;
+
+            users.add(info.getUsername());
+            looks.add(info.getLook());
+            userIds.add(info.getId());
+        }
+
+        return new WiredHighscoreRow(users, looks, userIds, entry.getScore());
+    }
+
+    private boolean matchesDeletedRow(WiredHighscoreDataEntry entry, WiredHighscoreClearType clearType, WiredHighscoreScoreType scoreType, List<Integer> userIds, int score) {
+        if (!this.timeMatchesEntry(entry, clearType)) return false;
+        if (!entry.getUserIds().equals(userIds)) return false;
+
+        if (scoreType == WiredHighscoreScoreType.MOSTWIN) {
+            return entry.isWin();
+        }
+
+        if (scoreType == WiredHighscoreScoreType.PERTEAM) {
+            return true;
+        }
+
+        return entry.getScore() == score;
     }
 
     private boolean timeMatchesEntry(WiredHighscoreDataEntry entry, WiredHighscoreClearType timeType) {

@@ -11,6 +11,7 @@ import com.eu.habbo.habbohotel.crafting.CraftingManager;
 import com.eu.habbo.habbohotel.guides.GuideManager;
 import com.eu.habbo.habbohotel.guilds.GuildManager;
 import com.eu.habbo.habbohotel.hotelview.HotelViewManager;
+import com.eu.habbo.habbohotel.items.chests.ChestManager;
 import com.eu.habbo.habbohotel.items.ItemManager;
 import com.eu.habbo.habbohotel.modtool.ModToolManager;
 import com.eu.habbo.habbohotel.modtool.ModToolSanctions;
@@ -24,6 +25,7 @@ import com.eu.habbo.habbohotel.rooms.RoomManager;
 import com.eu.habbo.habbohotel.users.HabboManager;
 import com.eu.habbo.habbohotel.users.subscriptions.SubscriptionManager;
 import com.eu.habbo.habbohotel.users.subscriptions.SubscriptionScheduler;
+import com.eu.habbo.habbohotel.wired.creator.WiredCreatorToolsCatalogManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,6 +60,8 @@ public class GameEnvironment {
     private SubscriptionManager subscriptionManager;
     private CalendarManager calendarManager;
     private RoomChatBubbleManager roomChatBubbleManager;
+    private WiredCreatorToolsCatalogManager wiredCreatorToolsCatalogManager;
+    private ChestManager chestManager;
 
     public void load() throws Exception {
         LOGGER.info("GameEnvironment -> Loading...");
@@ -84,6 +88,8 @@ public class GameEnvironment {
         this.pollManager = new PollManager();
         this.calendarManager = new CalendarManager();
         this.roomChatBubbleManager = new RoomChatBubbleManager();
+        this.wiredCreatorToolsCatalogManager = new WiredCreatorToolsCatalogManager();
+        this.chestManager = new ChestManager();
 
         this.roomManager.loadPublicRooms();
         this.navigatorManager.loadNavigator();
@@ -218,5 +224,13 @@ public class GameEnvironment {
 
     public RoomChatBubbleManager getRoomChatBubbleManager() {
         return roomChatBubbleManager;
+    }
+
+    public WiredCreatorToolsCatalogManager getWiredCreatorToolsCatalogManager() {
+        return wiredCreatorToolsCatalogManager;
+    }
+
+    public ChestManager getChestManager() {
+        return chestManager;
     }
 }

@@ -28,7 +28,8 @@ public class CatalogPagesListComposer extends MessageComposer {
     @Override
     protected ServerMessage composeInternal() {
         try {
-            List<CatalogPage> pages = Emulator.getGameEnvironment().getCatalogManager().getCatalogPages(-1, this.habbo);
+            List<CatalogPage> pages = Emulator.getGameEnvironment().getCatalogManager()
+                    .getCatalogPages(-1, this.habbo);
 
             this.response.init(Outgoing.CatalogPagesListComposer);
 
@@ -56,7 +57,8 @@ public class CatalogPagesListComposer extends MessageComposer {
     }
 
     private void append(CatalogPage category) {
-        List<CatalogPage> pagesList = Emulator.getGameEnvironment().getCatalogManager().getCatalogPages(category.getId(), this.habbo);
+        List<CatalogPage> pagesList = Emulator.getGameEnvironment().getCatalogManager()
+                .getCatalogPages(category.getId(), this.habbo);
 
         this.response.appendBoolean(category.isVisible());
         this.response.appendInt(category.getIconImage());
@@ -75,7 +77,6 @@ public class CatalogPagesListComposer extends MessageComposer {
             this.append(page);
         }
     }
-
 
     public Habbo getHabbo() {
         return habbo;

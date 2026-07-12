@@ -5,9 +5,12 @@ import com.eu.habbo.habbohotel.items.interactions.*;
 import com.eu.habbo.habbohotel.modtool.ScripterManager;
 import com.eu.habbo.habbohotel.rooms.*;
 import com.eu.habbo.habbohotel.users.HabboItem;
+import com.eu.habbo.Emulator;
 import com.eu.habbo.messages.incoming.MessageHandler;
 import com.eu.habbo.messages.outgoing.generic.alerts.BubbleAlertComposer;
 import com.eu.habbo.messages.outgoing.generic.alerts.BubbleAlertKeys;
+import com.eu.habbo.messages.outgoing.inventory.AddHabboItemComposer;
+import com.eu.habbo.messages.outgoing.inventory.InventoryRefreshComposer;
 import com.eu.habbo.messages.outgoing.inventory.RemoveHabboItemComposer;
 
 public class RoomPlaceItemEvent extends MessageHandler {
@@ -114,5 +117,15 @@ public class RoomPlaceItemEvent extends MessageHandler {
         this.client.sendResponse(new RemoveHabboItemComposer(item.getGiftAdjustedId()));
         this.client.getHabbo().getInventory().getItemsComponent().removeHabboItem(item.getId());
         item.setFromGift(false);
+
+        if (item instanceof InteractionTeleport && Emulator.getGameEnvironment().getWiredCreatorToolsCatalogManager().isWiredToolItem(item.getBaseItem().getId())) {
+            int pairedItemId = Emulator.getGameEnvironment().getItemManager().getTeleportPairItemId(item.getId());
+            HabboItem pairedItem = pairedItemId > 0 ? this.client.getHabbo().getInventory().getItemsComponent().getHabboItem(pairedItemId) : null;
+
+            if (pairedItem != null && pairedItem.getRoomId() == 0) {
+                this.client.sendResponse(new AddHabboItemComposer(pairedItem));
+                this.client.sendResponse(new InventoryRefreshComposer());
+            }
+        }
     }
 }

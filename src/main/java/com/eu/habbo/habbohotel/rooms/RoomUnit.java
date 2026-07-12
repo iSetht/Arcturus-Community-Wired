@@ -3,6 +3,7 @@ package com.eu.habbo.habbohotel.rooms;
 import com.eu.habbo.Emulator;
 import com.eu.habbo.habbohotel.bots.Bot;
 import com.eu.habbo.habbohotel.items.Item;
+import com.eu.habbo.habbohotel.items.interactions.InteractionOneWayGate;
 import com.eu.habbo.habbohotel.items.interactions.InteractionTileWalkMagic;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWater;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWaterItem;
@@ -12,6 +13,9 @@ import com.eu.habbo.habbohotel.pets.RideablePet;
 import com.eu.habbo.habbohotel.users.DanceType;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredMovement;
+import com.eu.habbo.messages.outgoing.rooms.WiredMovementsComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserStatusComposer;
 import com.eu.habbo.plugin.Event;
 import com.eu.habbo.plugin.events.roomunit.RoomUnitLookAtPointEvent;
@@ -20,15 +24,15 @@ import com.eu.habbo.plugin.events.users.UserIdleEvent;
 import com.eu.habbo.plugin.events.users.UserTakeStepEvent;
 import com.eu.habbo.threading.runnables.RoomUnitKick;
 import com.eu.habbo.util.pathfinding.Rotation;
-import gnu.trove.map.TMap;
-import gnu.trove.map.hash.THashMap;
 import gnu.trove.set.hash.THashSet;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
@@ -39,11 +43,18 @@ import org.slf4j.LoggerFactory;
 public class RoomUnit {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RoomUnit.class);
+  public static final String CACHE_ROOM_ENTRY_METHOD = "wired.creator.room_entry.method";
+  public static final String CACHE_ROOM_ENTRY_TELEPORT_ID = "wired.creator.room_entry.teleport_id";
+  public static final String CACHE_WIRED_TEAM_TYPE = "wired.creator.team.type";
+  private static final String CACHE_WIRED_WALK_STEP_TILE = "wired.walk_step.tile";
+  private static final String CACHE_WIRED_WALK_STEP_INTERRUPTED = "wired.walk_step.interrupted";
+  private static final String CACHE_WIRED_WALK_START_ITEM_STATES = "wired.walk_start.item_states";
+  private static final String CACHE_SKIP_NEXT_FAST_WALK = "wired.extra.carry_avatar.skip_next_fast_walk";
 
   public boolean isWiredTeleporting = false;
   public boolean isLeavingTeleporter = false;
   private final ConcurrentHashMap<RoomUnitStatus, String> status;
-  private final THashMap<String, Object> cacheable;
+  private final ConcurrentHashMap<String, Object> cacheable;
   public boolean canRotate = true;
   public boolean animateWalk = false;
   public boolean cmdTeleport = false;
@@ -77,22 +88,29 @@ public class RoomUnit {
   private int handItem;
   private long handItemTimestamp;
   private long lastRollerTime;
+  private RoomTile lastRollerLocation;
   private int walkTimeOut;
   private int effectId;
   private int effectEndTimestamp;
   private ScheduledFuture<?> moveBlockingTask;
+  private RoomUserRotation cosmeticBodyRotation;
+  private RoomUserRotation cosmeticHeadRotation;
+  private long cosmeticRotationUntilMs;
+  private long cosmeticJumpUntilMs;
+  private String cosmeticJumpValue;
 
   private int idleTimer;
   private Room room;
   private RoomRightLevels rightsLevel = RoomRightLevels.NONE;
   private THashSet<Integer> overridableTiles;
+  private Map<Integer, Long> temporaryOverridableTiles;
 
   public RoomUnit() {
     this.id = 0;
     this.inRoom = false;
     this.canWalk = true;
     this.status = new ConcurrentHashMap<>();
-    this.cacheable = new THashMap<>();
+    this.cacheable = new ConcurrentHashMap<>();
     this.roomUnitType = RoomUnitType.UNKNOWN;
     this.danceType = DanceType.NONE;
     this.handItem = 0;
@@ -101,6 +119,7 @@ public class RoomUnit {
     this.effectId = 0;
     this.isKicked = false;
     this.overridableTiles = new THashSet<>();
+    this.temporaryOverridableTiles = new HashMap<>();
   }
 
   public void clearWalking() {
@@ -167,6 +186,7 @@ public class RoomUnit {
 
       if (this.status.remove(RoomUnitStatus.SIT) != null) {
         this.statusUpdate = true;
+        WiredManager.triggerUserPerformAction(room, this, RoomUserAction.STAND.getAction());
       }
       if (this.status.remove(RoomUnitStatus.MOVE) != null) {
         this.statusUpdate = true;
@@ -185,7 +205,7 @@ public class RoomUnit {
         return true;
       }
 
-      boolean canfastwalk = true;
+      boolean canfastwalk = !InteractionOneWayGate.isPendingExitCommitted(this);
       Habbo habboT = room.getHabbo(this);
       if (habboT != null) {
         if (habboT.getHabboInfo().getRiding() != null) {
@@ -202,6 +222,10 @@ public class RoomUnit {
         if (next != null && next.hasUnits() && !overrideChecks) {
           return false;
         }
+      }
+
+      if (Boolean.TRUE.equals(this.cacheable.remove(CACHE_SKIP_NEXT_FAST_WALK))) {
+        canfastwalk = false;
       }
 
       if (canfastwalk && this.fastWalk && this.path.size() > 1) {
@@ -241,12 +265,15 @@ public class RoomUnit {
       }
 
       HabboItem item = room.getTopItemAt(next.x, next.y);
+      if (item == null) {
+        item = WiredMovement.resolveDepartingFurniForWalkOn(room, this, next);
+      }
       boolean canSitNextTile = room.canSitAt(next.x, next.y);
       boolean canLayNextTile = room.canLayAt(next.x, next.y);
 
       if (!(this.path.isEmpty() && (canSitNextTile || canLayNextTile))) {
         double height = next.getStackHeight() - this.currentLocation.getStackHeight();
-        if (canMoveToTile(room, next, height, canSitNextTile, canLayNextTile)) {
+        if (canMoveToTile(room, next, height, canSitNextTile, canLayNextTile, overrideChecks)) {
           this.path.clear();
           this.status.remove(RoomUnitStatus.MOVE);
           return false;
@@ -295,6 +322,7 @@ public class RoomUnit {
       this.setRotation(
           RoomUserRotation.values()[Rotation.Calculate(this.getX(), this.getY(), next.x, next.y)]);
       if (item != null) {
+        this.beginWiredWalkStep(next);
         if (item != habboItem || !RoomLayout.pointInSquare(item.getX(), item.getY(),
             item.getX() + item.getBaseItem().getWidth() - 1,
             item.getY() + item.getBaseItem().getLength() - 1, this.getX(), this.getY())) {
@@ -310,11 +338,17 @@ public class RoomUnit {
             if (habbo != null) {
               ((ConditionalGate) item).onRejected(this, this.getRoom(), new Object[]{});
             }
+            this.endWiredWalkStep();
             return false;
           }
         } else {
           item.onWalk(this, room, new Object[]{this.getCurrentLocation(), next});
         }
+        if (this.consumeWiredWalkStepInterrupted()) {
+          this.endWiredWalkStep();
+          return false;
+        }
+        this.endWiredWalkStep();
 
         zHeight += item.getZ();
 
@@ -357,6 +391,45 @@ public class RoomUnit {
 
       this.setZ(zHeight);
       this.setCurrentLocation(room.getLayout().getTile(next.x, next.y));
+      if (InteractionOneWayGate.commitPendingEntryFromMovedGate(room, this)) {
+        this.resetIdleTimer();
+        return false;
+      }
+      if (InteractionOneWayGate.commitQueuedGateEntry(room, this)) {
+        this.resetIdleTimer();
+        return false;
+      }
+      if (InteractionOneWayGate.startQueuedGate(room, this)) {
+        RoomTile handoffOrigin = this.getCurrentLocation();
+        double handoffOriginZ = this.getZ();
+        if (this.getPath() != null && !this.getPath().isEmpty()) {
+          this.cycle(room);
+          RoomTile handoffTarget = this.getCurrentLocation();
+          if (handoffOrigin != null && handoffTarget != null && handoffOrigin != handoffTarget) {
+            int handoffDirection = Rotation.Calculate(handoffOrigin.x, handoffOrigin.y, handoffTarget.x, handoffTarget.y);
+            room.sendComposer(new WiredMovementsComposer(Collections.singletonList(
+                WiredMovementsComposer.userWalkMovement(
+                    this.getId(),
+                    handoffOrigin.x,
+                    handoffOrigin.y,
+                    handoffTarget.x,
+                    handoffTarget.y,
+                    handoffOriginZ,
+                    this.getZ(),
+                    handoffDirection,
+                    handoffDirection,
+                    WiredMovement.DEFAULT_USER_ANIMATION_MS)
+            )).compose());
+          } else {
+            room.sendComposer(new RoomUserStatusComposer(this).compose());
+          }
+        }
+        this.resetIdleTimer();
+        return false;
+      }
+      if (InteractionOneWayGate.getPendingExitTile(this) == this.getCurrentLocation()) {
+        InteractionOneWayGate.completePendingExit(room, this);
+      }
       this.resetIdleTimer();
 
       if (habbo != null) {
@@ -376,13 +449,18 @@ public class RoomUnit {
       return false;
 
     } catch (Exception e) {
+      this.endWiredWalkStep();
       LOGGER.error("Caught exception", e);
       return false;
     }
   }
 
   private static boolean canMoveToTile(Room room, RoomTile next, double height,
-      boolean canSitNextTile, boolean canLayNextTile) {
+      boolean canSitNextTile, boolean canLayNextTile, boolean overrideChecks) {
+    if (overrideChecks) {
+      return false;
+    }
+
     return (!room.tileWalkable(next) || (!RoomLayout.ALLOW_FALLING
         && height < -RoomLayout.MAXIMUM_STEP_HEIGHT) || (next.state == RoomTileState.OPEN
         && height > RoomLayout.MAXIMUM_STEP_HEIGHT)) && !canSitNextTile && !canLayNextTile;
@@ -400,6 +478,43 @@ public class RoomUnit {
     return this.currentLocation;
   }
 
+  public RoomTile getWiredEffectiveLocation() {
+    Object tile = this.cacheable.get(CACHE_WIRED_WALK_STEP_TILE);
+    return tile instanceof RoomTile ? (RoomTile) tile : this.currentLocation;
+  }
+
+  public short getWiredEffectiveX() {
+    RoomTile location = this.getWiredEffectiveLocation();
+    return location == null ? this.getX() : location.x;
+  }
+
+  public short getWiredEffectiveY() {
+    RoomTile location = this.getWiredEffectiveLocation();
+    return location == null ? this.getY() : location.y;
+  }
+
+  public void interruptWiredWalkStep() {
+    if (this.cacheable.containsKey(CACHE_WIRED_WALK_STEP_TILE)) {
+      this.cacheable.put(CACHE_WIRED_WALK_STEP_INTERRUPTED, Boolean.TRUE);
+    }
+  }
+
+  private void beginWiredWalkStep(RoomTile tile) {
+    if (tile != null) {
+      this.cacheable.put(CACHE_WIRED_WALK_STEP_TILE, tile);
+      this.cacheable.remove(CACHE_WIRED_WALK_STEP_INTERRUPTED);
+    }
+  }
+
+  private void endWiredWalkStep() {
+    this.cacheable.remove(CACHE_WIRED_WALK_STEP_TILE);
+    this.cacheable.remove(CACHE_WIRED_WALK_STEP_INTERRUPTED);
+  }
+
+  private boolean consumeWiredWalkStepInterrupted() {
+    return Boolean.TRUE.equals(this.cacheable.get(CACHE_WIRED_WALK_STEP_INTERRUPTED));
+  }
+
   public void setCurrentLocation(RoomTile location) {
     if (location != null) {
       if (this.currentLocation != null) {
@@ -410,6 +525,14 @@ public class RoomUnit {
     }
   }
 
+  public void setCurrentLocationAndGoal(RoomTile location) {
+    if (location != null) {
+      this.startLocation = location;
+      setCurrentLocation(location);
+      this.goalLocation = location;
+      this.botStartLocation = location;
+    }
+  }
   public short getX() {
     return this.currentLocation.x;
   }
@@ -458,12 +581,20 @@ public class RoomUnit {
     return this.bodyRotation;
   }
 
+  public RoomUserRotation getStatusBodyRotation() {
+    return this.hasCosmeticRotation() ? this.cosmeticBodyRotation : this.bodyRotation;
+  }
+
   public void setBodyRotation(RoomUserRotation bodyRotation) {
     this.bodyRotation = bodyRotation;
   }
 
   public RoomUserRotation getHeadRotation() {
     return this.headRotation;
+  }
+
+  public RoomUserRotation getStatusHeadRotation() {
+    return this.hasCosmeticRotation() ? this.cosmeticHeadRotation : this.headRotation;
   }
 
   public void setHeadRotation(RoomUserRotation headRotation) {
@@ -476,6 +607,64 @@ public class RoomUnit {
 
   public synchronized void setDanceType(DanceType danceType) {
     this.danceType = danceType;
+  }
+
+  public void setCosmeticRotation(RoomUserRotation rotation, long durationMs) {
+    if (rotation == null || durationMs <= 0) {
+      this.clearCosmeticRotation();
+      return;
+    }
+
+    this.cosmeticBodyRotation = rotation;
+    this.cosmeticHeadRotation = rotation;
+    this.cosmeticRotationUntilMs = System.currentTimeMillis() + durationMs;
+  }
+
+  public void clearCosmeticRotation() {
+    this.cosmeticBodyRotation = null;
+    this.cosmeticHeadRotation = null;
+    this.cosmeticRotationUntilMs = 0;
+  }
+
+  public void setCosmeticJump(String value, long durationMs) {
+    if (durationMs <= 0) {
+      this.clearCosmeticJump();
+      return;
+    }
+
+    this.cosmeticJumpValue = value == null || value.isEmpty() ? "0.5" : value;
+    this.cosmeticJumpUntilMs = System.currentTimeMillis() + durationMs;
+  }
+
+  public void clearCosmeticJump() {
+    this.cosmeticJumpUntilMs = 0;
+    this.cosmeticJumpValue = null;
+  }
+
+  public String getCosmeticJumpValue() {
+    if (this.cosmeticJumpUntilMs <= 0) {
+      return null;
+    }
+
+    if (System.currentTimeMillis() <= this.cosmeticJumpUntilMs) {
+      return this.cosmeticJumpValue;
+    }
+
+    this.clearCosmeticJump();
+    return null;
+  }
+
+  private boolean hasCosmeticRotation() {
+    if (this.cosmeticRotationUntilMs <= 0) {
+      return false;
+    }
+
+    if (System.currentTimeMillis() <= this.cosmeticRotationUntilMs) {
+      return this.cosmeticBodyRotation != null && this.cosmeticHeadRotation != null;
+    }
+
+    this.clearCosmeticRotation();
+    return false;
   }
 
   public void setCanWalk(boolean value) {
@@ -532,11 +721,91 @@ public class RoomUnit {
       this.goalLocation = goalLocation;
       this.findPath(); ///< Quadral: this is where we start formulating a path
       if (!this.path.isEmpty()) {
+        this.captureWiredWalkStartItemStates();
         this.tilesWalked = isWalking ? this.tilesWalked : 0;
         this.cmdSit = false;
       } else {
+        this.cacheable.remove(CACHE_WIRED_WALK_START_ITEM_STATES);
         this.goalLocation = this.currentLocation;
       }
+    }
+  }
+
+  public String getWiredWalkStartItemState(HabboItem item) {
+    if (item == null) {
+      return null;
+    }
+
+    Object states = this.cacheable.get(CACHE_WIRED_WALK_START_ITEM_STATES);
+    if (!(states instanceof Map)) {
+      return null;
+    }
+
+    Object state = ((Map<?, ?>) states).get(item.getId());
+    return state instanceof String ? (String) state : null;
+  }
+
+  public Map<Integer, String> getWiredWalkStartItemStatesSnapshot() {
+    Object states = this.cacheable.get(CACHE_WIRED_WALK_START_ITEM_STATES);
+    if (!(states instanceof Map)) {
+      return new HashMap<>();
+    }
+
+    Map<Integer, String> snapshot = new HashMap<>();
+    for (Map.Entry<?, ?> entry : ((Map<?, ?>) states).entrySet()) {
+      if (entry.getKey() instanceof Integer && entry.getValue() instanceof String) {
+        snapshot.put((Integer) entry.getKey(), (String) entry.getValue());
+      }
+    }
+
+    return snapshot;
+  }
+
+  public void clearWiredWalkStartItemStates() {
+    this.cacheable.remove(CACHE_WIRED_WALK_START_ITEM_STATES);
+  }
+
+  private void captureWiredWalkStartItemStates() {
+    if (this.room == null || this.path == null || this.path.isEmpty()) {
+      this.cacheable.remove(CACHE_WIRED_WALK_START_ITEM_STATES);
+      return;
+    }
+
+    for (RoomTile tile : this.path) {
+      this.captureWiredWalkStartItemStates(tile, false);
+    }
+  }
+
+  public void captureWiredWalkStartItemStates(RoomTile tile, boolean replaceExisting) {
+    if (this.room == null || tile == null) {
+      return;
+    }
+
+    for (HabboItem item : this.room.getItemsAt(tile)) {
+      if (item == null) {
+        continue;
+      }
+
+      this.captureWiredWalkStartItemState(item, replaceExisting);
+    }
+  }
+
+  public void captureWiredWalkStartItemState(HabboItem item, boolean replaceExisting) {
+    if (item == null) {
+      return;
+    }
+
+    @SuppressWarnings("unchecked")
+    Map<Integer, String> states = (Map<Integer, String>) this.cacheable.get(CACHE_WIRED_WALK_START_ITEM_STATES);
+    if (states == null) {
+      states = new HashMap<>();
+      this.cacheable.put(CACHE_WIRED_WALK_START_ITEM_STATES, states);
+    }
+
+    if (replaceExisting) {
+      states.put(item.getId(), item.getExtradata());
+    } else {
+      states.putIfAbsent(item.getId(), item.getExtradata());
     }
   }
 
@@ -639,7 +908,7 @@ public class RoomUnit {
     return this.statusUpdate;
   }
 
-  public TMap<String, Object> getCacheable() {
+  public Map<String, Object> getCacheable() {
     return this.cacheable;
   }
 
@@ -653,6 +922,19 @@ public class RoomUnit {
 
   public void setLastRollerTime(long lastRollerTime) {
     this.lastRollerTime = lastRollerTime;
+  }
+
+  public RoomTile getLastRollerLocation() {
+    return this.lastRollerLocation;
+  }
+
+  public void setLastRollerLocation(RoomTile lastRollerLocation) {
+    this.lastRollerLocation = lastRollerLocation;
+  }
+
+  public void clearRecentRollerMovement() {
+    this.lastRollerTime = 0;
+    this.lastRollerLocation = null;
   }
 
   /**
@@ -787,7 +1069,21 @@ public class RoomUnit {
     }
 
     int tileIndex = (tile.x & 0xFF) | (tile.y << 12);
-    return this.overridableTiles.contains(tileIndex);
+    if (this.overridableTiles.contains(tileIndex)) {
+      return true;
+    }
+
+    Long temporaryUntil = this.temporaryOverridableTiles.get(tileIndex);
+    if (temporaryUntil == null) {
+      return false;
+    }
+
+    if (temporaryUntil <= System.currentTimeMillis()) {
+      this.temporaryOverridableTiles.remove(tileIndex);
+      return false;
+    }
+
+    return true;
   }
 
   public void addOverrideTile(RoomTile tile) {
@@ -806,8 +1102,18 @@ public class RoomUnit {
     this.overridableTiles.remove(tileIndex);
   }
 
+  public void addTemporaryOverrideTile(RoomTile tile, long durationMs) {
+    if (tile == null || durationMs <= 0) {
+      return;
+    }
+
+    int tileIndex = (tile.x & 0xFF) | (tile.y << 12);
+    this.temporaryOverridableTiles.put(tileIndex, System.currentTimeMillis() + durationMs);
+  }
+
   public void clearOverrideTiles() {
     this.overridableTiles.clear();
+    this.temporaryOverridableTiles.clear();
   }
 
   public boolean canLeaveRoomByDoor() {

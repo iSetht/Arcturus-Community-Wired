@@ -5,10 +5,16 @@ public enum RoomUserAction {
     WAVE(1),
     BLOW_KISS(2),
     LAUGH(3),
-    UNKNOWN(4),
+    AWAKE(4),
     IDLE(5),
     JUMP(6),
-    THUMB_UP(7);
+    THUMB_UP(7),
+    SIT(8),
+    STAND(9),
+    LAY(10),
+    SWIM(11),
+    SIGN(12),
+    DANCE(13);
 
     private final int action;
 

@@ -45,8 +45,15 @@ public class RoomWallItemsComposer extends MessageComposer {
 
         THashSet<HabboItem> items = this.room.getWallItems();
 
-        this.response.appendInt(items.size());
+        THashSet<HabboItem> visibleItems = new THashSet<>();
         for (HabboItem item : items) {
+            if (!this.room.isItemHiddenByAreaHide(item)) {
+                visibleItems.add(item);
+            }
+        }
+
+        this.response.appendInt(visibleItems.size());
+        for (HabboItem item : visibleItems) {
             item.serializeWallData(this.response);
         }
         return this.response;
