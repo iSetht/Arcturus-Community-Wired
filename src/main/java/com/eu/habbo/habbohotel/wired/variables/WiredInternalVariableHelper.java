@@ -36,6 +36,7 @@ public final class WiredInternalVariableHelper {
             "@position.y",
             "@rotation",
             "@altitude",
+            "@gravity",
             "@type",
             "@dimensions.x",
             "@dimensions.y",
@@ -168,7 +169,7 @@ public final class WiredInternalVariableHelper {
     }
 
     public static List<String> valueVariableRoots(WiredVariableType type) {
-        if (type == WiredVariableType.FURNI) return Arrays.asList("@id", "@class_id", "@height", "@state", "@position", "@rotation", "@altitude", "@type", "@dimensions", "@owner_id", "@wallitem_offset", "@chest", InteractionAreaHide.ROOT_VARIABLE, "@projectile");
+        if (type == WiredVariableType.FURNI) return Arrays.asList("@id", "@class_id", "@height", "@state", "@position", "@rotation", "@altitude", "@gravity", "@type", "@dimensions", "@owner_id", "@wallitem_offset", "@chest", InteractionAreaHide.ROOT_VARIABLE, "@projectile");
         if (type == WiredVariableType.USER) return Arrays.asList("@index", "@type", "@gender", "@achievement_score", "@favourite_group_id", "@position", "@direction", "@altitude", "@room_entry", "@handitem", "@effect", "@dance", "@sign", "@is_holding_down", "@team", "@user_id", "@pet_id", "@bot_id", "@transaction");
         if (type == WiredVariableType.GLOBAL) return Arrays.asList("@furni_count", "@user_count", "@wired_timer", "@teams", "@room_id", "@group_id", "@current_time");
         if (type == WiredVariableType.CONTEXT) return Arrays.asList("@selector_furni_count", "@selector_user_count", "@signal_furni_count", "@signal_user_count", "@event", "@held_down");
@@ -176,7 +177,7 @@ public final class WiredInternalVariableHelper {
     }
 
     public static List<String> editableValueVariables(WiredVariableType type) {
-        if (type == WiredVariableType.FURNI) return Arrays.asList("@state", "@position.x", "@position.y", "@rotation", "@altitude", "@wallitem_offset", InteractionAreaHide.WIDTH_VARIABLE, InteractionAreaHide.LENGTH_VARIABLE, InteractionAreaHide.ROOT_X_VARIABLE, InteractionAreaHide.ROOT_Y_VARIABLE);
+        if (type == WiredVariableType.FURNI) return Arrays.asList("@state", "@position.x", "@position.y", "@rotation", "@altitude", "@gravity", "@wallitem_offset", InteractionAreaHide.WIDTH_VARIABLE, InteractionAreaHide.LENGTH_VARIABLE, InteractionAreaHide.ROOT_X_VARIABLE, InteractionAreaHide.ROOT_Y_VARIABLE);
         if (type == WiredVariableType.USER) return Arrays.asList("@position.x", "@position.y", "@direction", "@altitude", "@handitem", "@effect", "@team.score");
         if (type == WiredVariableType.GLOBAL) return Arrays.asList("@teams.red.score", "@teams.green.score", "@teams.blue.score", "@teams.yellow.score");
         if (type == WiredVariableType.CONTEXT) return Collections.emptyList();
@@ -184,7 +185,7 @@ public final class WiredInternalVariableHelper {
     }
 
     public static List<String> editableValueVariableRoots(WiredVariableType type) {
-        if (type == WiredVariableType.FURNI) return Arrays.asList("@state", "@position", "@rotation", "@altitude", "@wallitem_offset", InteractionAreaHide.ROOT_VARIABLE);
+        if (type == WiredVariableType.FURNI) return Arrays.asList("@state", "@position", "@rotation", "@altitude", "@gravity", "@wallitem_offset", InteractionAreaHide.ROOT_VARIABLE);
         if (type == WiredVariableType.USER) return Arrays.asList("@position", "@direction", "@altitude", "@handitem", "@effect", "@team");
         if (type == WiredVariableType.GLOBAL) return Collections.singletonList("@teams");
         if (type == WiredVariableType.CONTEXT) return Collections.emptyList();

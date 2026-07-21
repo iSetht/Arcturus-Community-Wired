@@ -59,6 +59,7 @@ public abstract class HabboItem implements Runnable, IEventTriggers {
     private boolean needsUpdate = false;
     private boolean needsDelete = false;
     private boolean isFromGift = false;
+    private volatile boolean gravityEnabled = false;
 
     public HabboItem(ResultSet set, Item baseItem) throws SQLException {
         this.id = set.getInt("id");
@@ -197,6 +198,14 @@ public abstract class HabboItem implements Runnable, IEventTriggers {
     public void setZ(double z) {
         if (z > 9999 || z < -9999) return;
         this.z = z;
+    }
+
+    public boolean isGravityEnabled() {
+        return this.gravityEnabled;
+    }
+
+    public void setGravityEnabled(boolean gravityEnabled) {
+        this.gravityEnabled = gravityEnabled;
     }
 
     public int getRotation() {

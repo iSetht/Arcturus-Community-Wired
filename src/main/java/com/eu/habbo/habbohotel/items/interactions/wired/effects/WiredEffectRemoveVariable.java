@@ -15,6 +15,7 @@ import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredFurniGravity;
 import com.eu.habbo.habbohotel.wired.core.WiredSources;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
 import com.eu.habbo.messages.ServerMessage;
@@ -35,6 +36,7 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
     private static final int VARIABLE_TYPE_USER = 2;
     private static final int VARIABLE_TYPE_CONTEXT = 3;
     private static final List<String> USER_INTERNAL_VARIABLES = Arrays.asList("@has_rights");
+    private static final List<String> FURNI_INTERNAL_VARIABLES = Arrays.asList("@gravity");
 
     private int variableType = VARIABLE_TYPE_USER;
     private int source = WiredSources.SOURCE_TRIGGER;
@@ -67,6 +69,13 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
         if (this.variableType == VARIABLE_TYPE_USER && USER_INTERNAL_VARIABLES.contains(this.variableName)) {
             for (RoomUnit roomUnit : this.resolveSourceUsers(ctx)) {
                 this.removeUserInternalVariable(ctx.room(), roomUnit, this.variableName);
+            }
+            return;
+        }
+
+        if (this.variableType == VARIABLE_TYPE_FURNI && FURNI_INTERNAL_VARIABLES.contains(this.variableName)) {
+            for (HabboItem item : this.resolveSourceItems(ctx, this.items)) {
+                WiredFurniGravity.setEnabled(ctx.room(), item, false);
             }
             return;
         }
@@ -240,11 +249,12 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
                 .sorted()
                 .collect(Collectors.toList());
 
-        if (type == WiredVariableType.USER) {
-            for (String variable : USER_INTERNAL_VARIABLES) {
-                if (!variables.contains(variable)) {
-                    variables.add(variable);
-                }
+        List<String> internalVariables = type == WiredVariableType.FURNI
+                ? FURNI_INTERNAL_VARIABLES
+                : (type == WiredVariableType.USER ? USER_INTERNAL_VARIABLES : java.util.Collections.emptyList());
+        for (String variable : internalVariables) {
+            if (!variables.contains(variable)) {
+                variables.add(variable);
             }
         }
 
@@ -299,10 +309,11 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
     }
 
     private String normalizeVariableName(int variableType, String variableName) {
-        if (variableType == VARIABLE_TYPE_USER && variableName != null) {
+        if (variableName != null) {
             String normalizedInternalName = variableName.toLowerCase().trim();
 
-            if (USER_INTERNAL_VARIABLES.contains(normalizedInternalName)) {
+            if ((variableType == VARIABLE_TYPE_USER && USER_INTERNAL_VARIABLES.contains(normalizedInternalName))
+                    || (variableType == VARIABLE_TYPE_FURNI && FURNI_INTERNAL_VARIABLES.contains(normalizedInternalName))) {
                 return normalizedInternalName;
             }
         }

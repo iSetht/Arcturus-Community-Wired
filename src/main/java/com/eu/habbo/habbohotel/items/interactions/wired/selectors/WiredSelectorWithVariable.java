@@ -39,7 +39,7 @@ abstract class WiredSelectorWithVariable extends InteractionWiredSelector {
     private static final int REFERENCE_SET_VALUE = 0;
     private static final int REFERENCE_FROM_VARIABLE = 1;
     private static final List<String> FURNI_INTERNAL_VARIABLES = Arrays.asList(
-            "@id", "@class_id", "@height", "@state", "@position.x", "@position.y", "@rotation", "@altitude",
+            "@id", "@class_id", "@height", "@state", "@position.x", "@position.y", "@rotation", "@altitude", "@gravity",
             "@type", "@dimensions.x", "@dimensions.y", "@owner_id", "@is_invisible", "@is_stackable",
             "@can_stand_on", "@can_sit_on", "@can_lay_on", "@wallitem_offset");
     private static final List<String> USER_INTERNAL_VARIABLES = Arrays.asList(

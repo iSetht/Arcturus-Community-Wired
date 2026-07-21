@@ -662,6 +662,24 @@ public final class WiredMovement {
         moveFurniAltitude(null, room, item, newZ, new MovementCurve(0, 0, 0, 0), false, null);
     }
 
+    /**
+     * Performs a vertical gravity fall using the same authoritative movement path as
+     * Wired altitude changes and an ease-in cubic curve (constant acceleration feel).
+     */
+    static boolean moveFurniGravity(Room room, HabboItem item, double newZ, int animationTimeMs,
+                                      List<WiredMovementsComposer.MovementData> movementUpdates) {
+        int duration = Math.max(1, animationTimeMs);
+        boolean moved = moveFurniAltitude(
+                null,
+                room,
+                item,
+                newZ,
+                new MovementCurve(300000, 0, 0, duration),
+                false,
+                movementUpdates);
+        return moved;
+    }
+
     private static void moveFurniAltitude(WiredContext ctx, HabboItem item, double newZ, boolean updateClientImmediately, List<WiredMovementsComposer.MovementData> movementUpdates) {
         moveFurniAltitude(ctx, ctx == null ? null : ctx.room(), item, newZ,
                 MovementCurve.resolve(ctx, MoveOptions.slide()),
@@ -669,9 +687,9 @@ public final class WiredMovement {
                 movementUpdates);
     }
 
-    private static void moveFurniAltitude(WiredContext ctx, Room room, HabboItem item, double newZ, MovementCurve curve, boolean updateClientImmediately, List<WiredMovementsComposer.MovementData> movementUpdates) {
+    private static boolean moveFurniAltitude(WiredContext ctx, Room room, HabboItem item, double newZ, MovementCurve curve, boolean updateClientImmediately, List<WiredMovementsComposer.MovementData> movementUpdates) {
         if (room == null || item == null || room.getLayout() == null) {
-            return;
+            return false;
         }
 
         RoomTile tile = room.getLayout().getTile(item.getX(), item.getY());
@@ -679,16 +697,16 @@ public final class WiredMovement {
             item.setZ(newZ);
             item.needsUpdate(true);
             room.updateItem(item);
-            return;
+            return true;
         }
 
         double oldZ = item.getZ();
         if (Double.compare(oldZ, newZ) == 0) {
-            return;
+            return true;
         }
 
         if (!WiredMovementLimiter.tryReserve(room, item)) {
-            return;
+            return false;
         }
 
         rememberPendingAltitudeOrigin(ctx, item, oldZ);
@@ -716,8 +734,13 @@ public final class WiredMovement {
             sendFurniSlide(room, item, tile, oldZ, tile, curve, false);
         }
 
+        if (!updateClientImmediately && curve.animationTimeMs > 0) {
+            markFurniMoving(room, item, curve.animationTimeMs);
+        }
         updateTilesSilently(room, tile, item);
         WiredMovementLimiter.release(room, item);
+        WiredFurniGravity.schedule(room);
+        return true;
     }
 
     private static void updateTilesSilently(Room room, RoomTile tile, HabboItem item) {

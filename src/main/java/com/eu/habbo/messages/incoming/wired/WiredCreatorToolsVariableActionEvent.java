@@ -17,6 +17,7 @@ import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import com.eu.habbo.habbohotel.wired.creator.WiredCreatorToolsInspectionValues;
 import com.eu.habbo.habbohotel.wired.core.WiredMovement;
+import com.eu.habbo.habbohotel.wired.core.WiredFurniGravity;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
 import com.eu.habbo.messages.incoming.MessageHandler;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUnitOnRollerComposer;
@@ -226,6 +227,11 @@ public class WiredCreatorToolsVariableActionEvent extends MessageHandler {
 
         if ("@altitude".equals(variableName)) {
             WiredMovement.moveFurniAltitude(room, item, value / 100D);
+            return true;
+        }
+
+        if ("@gravity".equals(variableName)) {
+            WiredFurniGravity.setEnabled(room, item, value != 0L);
             return true;
         }
 

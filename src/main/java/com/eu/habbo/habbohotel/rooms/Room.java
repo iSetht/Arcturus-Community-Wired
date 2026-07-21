@@ -48,6 +48,7 @@ import com.eu.habbo.habbohotel.users.DanceType;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.core.WiredMouseHoldManager;
+import com.eu.habbo.habbohotel.wired.core.WiredFurniGravity;
 import com.eu.habbo.messages.ISerialize;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.outgoing.guilds.GuildInfoComposer;
@@ -2677,6 +2678,10 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
     if (item instanceof InteractionMultiHeight) {
       ((InteractionMultiHeight) item).updateUnitsOnItem(this);
+    }
+
+    if (updateTiles && item.getBaseItem().getType() == FurnitureType.FLOOR) {
+      WiredFurniGravity.schedule(this);
     }
   }
 

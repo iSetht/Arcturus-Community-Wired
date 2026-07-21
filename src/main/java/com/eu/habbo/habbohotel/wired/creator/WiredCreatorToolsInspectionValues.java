@@ -96,6 +96,7 @@ public class WiredCreatorToolsInspectionValues {
         values.put("@position.y", String.valueOf(item.getY()));
         values.put("@rotation", String.valueOf(item.getRotation()));
         values.put("@altitude", String.valueOf(Math.round(item.getZ() * 100D)));
+        values.put("@gravity", item.isGravityEnabled() ? "1" : "0");
         values.put("@type", item.getId() < 0 ? "2" : "0");
         values.put("@dimensions.x", String.valueOf(baseItem.getWidth()));
         values.put("@dimensions.y", String.valueOf(baseItem.getLength()));

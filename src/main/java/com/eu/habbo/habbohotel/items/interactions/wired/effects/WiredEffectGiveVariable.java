@@ -15,6 +15,7 @@ import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredFurniGravity;
 import com.eu.habbo.habbohotel.items.interactions.wired.variables.WiredVariableContext;
 import com.eu.habbo.habbohotel.wired.core.WiredSources;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
@@ -36,6 +37,7 @@ public class WiredEffectGiveVariable extends InteractionWiredEffect {
     private static final int VARIABLE_TYPE_USER = 2;
     private static final int VARIABLE_TYPE_CONTEXT = 3;
     private static final List<String> USER_INTERNAL_VALUE_VARIABLES = Arrays.asList("@handitem", "@effect", "@has_rights");
+    private static final List<String> FURNI_INTERNAL_VALUE_VARIABLES = Arrays.asList("@gravity");
 
     private int variableType = VARIABLE_TYPE_USER;
     private int source = WiredSources.SOURCE_TRIGGER;
@@ -75,6 +77,13 @@ public class WiredEffectGiveVariable extends InteractionWiredEffect {
         if (this.variableType == VARIABLE_TYPE_USER && USER_INTERNAL_VALUE_VARIABLES.contains(this.variableName)) {
             for (RoomUnit roomUnit : this.resolveSourceUsers(ctx)) {
                 this.giveUserInternalValue(ctx.room(), roomUnit, this.variableName, this.initialValue);
+            }
+            return;
+        }
+
+        if (this.variableType == VARIABLE_TYPE_FURNI && FURNI_INTERNAL_VALUE_VARIABLES.contains(this.variableName)) {
+            for (HabboItem item : this.resolveSourceItems(ctx, this.items)) {
+                WiredFurniGravity.setEnabled(ctx.room(), item, true);
             }
             return;
         }
@@ -252,11 +261,10 @@ public class WiredEffectGiveVariable extends InteractionWiredEffect {
     }
 
     private List<String> withInternalVariables(List<String> variables, WiredVariableType type) {
-        if (type != WiredVariableType.USER) {
-            return variables;
-        }
-
-        for (String variable : USER_INTERNAL_VALUE_VARIABLES) {
+        List<String> internalVariables = type == WiredVariableType.FURNI
+                ? FURNI_INTERNAL_VALUE_VARIABLES
+                : (type == WiredVariableType.USER ? USER_INTERNAL_VALUE_VARIABLES : java.util.Collections.emptyList());
+        for (String variable : internalVariables) {
             if (!variables.contains(variable)) {
                 variables.add(variable);
             }
@@ -266,10 +274,11 @@ public class WiredEffectGiveVariable extends InteractionWiredEffect {
     }
 
     private String normalizeVariableName(int variableType, String variableName) {
-        if (variableType == VARIABLE_TYPE_USER && variableName != null) {
+        if (variableName != null) {
             String normalizedInternalName = variableName.toLowerCase().trim();
 
-            if (USER_INTERNAL_VALUE_VARIABLES.contains(normalizedInternalName)) {
+            if ((variableType == VARIABLE_TYPE_USER && USER_INTERNAL_VALUE_VARIABLES.contains(normalizedInternalName))
+                    || (variableType == VARIABLE_TYPE_FURNI && FURNI_INTERNAL_VALUE_VARIABLES.contains(normalizedInternalName))) {
                 return normalizedInternalName;
             }
         }

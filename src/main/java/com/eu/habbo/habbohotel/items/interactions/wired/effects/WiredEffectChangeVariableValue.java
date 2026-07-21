@@ -34,6 +34,7 @@ import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredMouseHoldManager;
 import com.eu.habbo.habbohotel.wired.core.MoveOptions;
 import com.eu.habbo.habbohotel.wired.core.WiredMovement;
+import com.eu.habbo.habbohotel.wired.core.WiredFurniGravity;
 import com.eu.habbo.habbohotel.wired.core.WiredSources;
 import com.eu.habbo.habbohotel.wired.core.WiredUserMovement;
 import com.eu.habbo.habbohotel.wired.core.WiredTriggerSourceResolver;
@@ -957,6 +958,7 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
             Long pending = WiredMovement.getPendingFurniAltitude(ctx, item);
             return pending == null ? Math.round(item.getZ() * 100D) : pending;
         }
+        if ("@gravity".equals(variableName)) return item.isGravityEnabled() ? 1L : 0L;
         if ("@wallitem_offset".equals(variableName)) return this.parseLong(item.getWallPosition());
         if (item instanceof InteractionAreaHide && variableName != null && variableName.startsWith(InteractionAreaHide.ROOT_VARIABLE)) {
             return ((InteractionAreaHide) item).readInternalValue(variableName);
@@ -1022,6 +1024,10 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
                 return WiredMovement.queueFurniAltitude(ctx, item, value);
             }
             WiredMovement.moveFurniAltitude(ctx, item, value / 100D);
+            return true;
+        }
+        else if ("@gravity".equals(variableName)) {
+            WiredFurniGravity.setEnabled(room, item, value != 0L);
             return true;
         }
         else if ("@wallitem_offset".equals(variableName)) item.setWallPosition(String.valueOf(value));

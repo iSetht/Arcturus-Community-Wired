@@ -28,6 +28,7 @@ import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.users.HabboManager;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.core.WiredFurniGravity;
 import com.eu.habbo.habbohotel.wired.variables.WiredProjectileVariables;
 import com.eu.habbo.habbohotel.wired.tick.WiredTickable;
 import com.eu.habbo.messages.outgoing.inventory.AddHabboItemComposer;
@@ -729,6 +730,8 @@ public class RoomItemManager {
 
             // Unregister from special types
             this.unregisterItemFromSpecialTypes(item);
+            WiredFurniGravity.forget(i);
+            WiredFurniGravity.schedule(this.room);
         }
     }
 
@@ -1688,6 +1691,8 @@ public class RoomItemManager {
             this.room.updateBotsAt(tile.x, tile.y);
         }
 
+        WiredFurniGravity.schedule(this.room);
+
         return FurnitureMovementError.NONE;
     }
 
@@ -1960,6 +1965,7 @@ public class RoomItemManager {
                 }
             }
         }
+        WiredFurniGravity.schedule(this.room);
         return FurnitureMovementError.NONE;
     }
 
