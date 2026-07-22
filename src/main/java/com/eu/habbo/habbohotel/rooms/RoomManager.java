@@ -867,6 +867,10 @@ public class RoomManager {
             floorItems.clear();
         }
 
+        if (!room.getGlobalFurniOpacities().isEmpty()) {
+            habbo.getClient().sendResponse(new WiredFurniOpacityComposer(room));
+        }
+
         if (!room.getCurrentPets().isEmpty()) {
             habbo.getClient().sendResponse(new RoomPetComposer(room.getCurrentPets()));
             for (Pet pet : room.getCurrentPets().valueCollection()) {

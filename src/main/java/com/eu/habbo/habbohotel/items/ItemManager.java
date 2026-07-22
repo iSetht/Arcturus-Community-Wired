@@ -342,6 +342,7 @@ public class ItemManager {
         this.interactionsList.add(new ItemInteraction("wf_act_send_signal", WiredEffectSendSignal.class));
         this.interactionsList.add(new ItemInteraction("wf_act_teleport_to_room", WiredEffectTeleportToRoom.class));
         this.interactionsList.add(new ItemInteraction("wf_act_set_altitude", WiredEffectSetFurniAltitude.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_change_opacity", WiredEffectChangeOpacity.class));
         this.interactionsList.add(new ItemInteraction("wf_act_move_to_dir", WiredEffectChangeFurniDirection.class));
         this.interactionsList.add(new ItemInteraction("wf_act_furni_to_furni", WiredEffectMoveFurniToFurni.class));
         this.interactionsList.add(new ItemInteraction("wf_act_furni_to_user", WiredEffectMoveFurniToAvatar.class));

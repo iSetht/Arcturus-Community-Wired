@@ -52,7 +52,8 @@ public enum WiredEffectType {
     GIVE_CURRENCY_FROM_CHEST(46),
     GIVE_FURNI_FROM_CHEST(47),
     INITIATE_TRANSACTION(48),
-    CANCEL_TRANSACTION(49);
+    CANCEL_TRANSACTION(49),
+    CHANGE_OPACITY(50);
 
     public final int code;
 

@@ -225,6 +225,8 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
   private String areaHideRefreshSignature;
   private final Set<Integer> areaHideHiddenFloorItemIds = ConcurrentHashMap.newKeySet();
   private final Set<Integer> areaHideHiddenWallItemIds = ConcurrentHashMap.newKeySet();
+  private final ConcurrentHashMap<Integer, Integer> globalFurniOpacities = new ConcurrentHashMap<>();
+  private final Set<Integer> globalFurniClickThrough = ConcurrentHashMap.newKeySet();
 
   public final THashMap<String, Object> cache;
 
@@ -2080,6 +2082,34 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
 
   public HabboItem getHabboItem(int id) {
     return this.itemManager.getHabboItem(id);
+  }
+
+  public void setGlobalFurniOpacity(int itemId, int opacity, boolean clickThrough) {
+    if (opacity >= 100 && !clickThrough) {
+      this.globalFurniOpacities.remove(itemId);
+      this.globalFurniClickThrough.remove(itemId);
+      return;
+    }
+
+    this.globalFurniOpacities.put(itemId, Math.max(0, opacity));
+    if (clickThrough) {
+      this.globalFurniClickThrough.add(itemId);
+    } else {
+      this.globalFurniClickThrough.remove(itemId);
+    }
+  }
+
+  public void clearGlobalFurniOpacity(int itemId) {
+    this.globalFurniOpacities.remove(itemId);
+    this.globalFurniClickThrough.remove(itemId);
+  }
+
+  public ConcurrentHashMap<Integer, Integer> getGlobalFurniOpacities() {
+    return new ConcurrentHashMap<>(this.globalFurniOpacities);
+  }
+
+  public boolean isGlobalFurniClickThrough(int itemId) {
+    return this.globalFurniClickThrough.contains(itemId);
   }
 
   void removeHabboItem(int id) {

@@ -31,6 +31,7 @@ public class Outgoing {
       public final static int WiredCreatorToolsCreateItemComposer = 4060;
       public final static int WiredMouseHoldStateComposer = 4065;
       public final static int WiredMovementsComposer = 4066;
+      public final static int WiredFurniOpacityComposer = 4069;
     public final static int WiredCreatorToolsChestLogsComposer = 4074;
     public final static int WiredClickUserResponseComposer = 108;
     public final static int CfhTopicsMessageComposer = 325;

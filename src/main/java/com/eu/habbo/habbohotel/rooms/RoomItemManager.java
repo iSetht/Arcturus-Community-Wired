@@ -712,6 +712,7 @@ public class RoomItemManager {
         if (i != null) {
             this.removeItemFromPlaceTempFurniSelections(i.getId());
             WiredProjectileVariables.discard(this.room, i);
+            this.room.clearGlobalFurniOpacity(i.getId());
             this.removeFloorItemFromTileIndex(i);
 
             synchronized (this.furniOwnerCount) {
