@@ -14,6 +14,7 @@ import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredVariable;
 import com.eu.habbo.habbohotel.items.interactions.games.InteractionGameTimer;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraLevelUpSystem;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraArrayEntryCapturer;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraTimeUtilities;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
 import com.eu.habbo.habbohotel.items.interactions.wired.utils.WiredTeamScoreHelper;
@@ -28,6 +29,7 @@ import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
+import com.eu.habbo.habbohotel.wired.core.WiredArrayChangeEventDispatcher;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.habbohotel.wired.core.WiredEvent;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
@@ -41,6 +43,16 @@ import com.eu.habbo.habbohotel.wired.creator.WiredCreatorToolsRoomStats;
 import com.eu.habbo.habbohotel.wired.variables.WiredInternalVariableHelper;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableStore;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayAddress;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayMutationOutcome;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayMutationGuard;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayFieldMutation;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayOperation;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayCapture;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayCapturePath;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayReadService;
+import com.eu.habbo.habbohotel.wired.variables.WiredResolvedArrayTarget;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableEditorDefinition;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUnitOnRollerComposer;
@@ -77,6 +89,8 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
     private long referenceValue = 0L;
     private String targetVariableName = "";
     private String referenceVariableName = "";
+    private WiredArrayAddress targetAddress = new WiredArrayAddress();
+    private WiredArrayAddress referenceAddress = new WiredArrayAddress();
     private final List<HabboItem> items = new ArrayList<>();
 
     public WiredEffectChangeVariableValue(ResultSet set, Item baseItem) throws SQLException {
@@ -120,14 +134,46 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         this.referenceVariableType = this.normalizeVariableType(intParams[3]);
         this.destinationSource = this.normalizeSource(this.targetVariableType, intParams[4]);
         this.referenceSource = this.normalizeSource(this.referenceVariableType, intParams[5]);
-        this.referenceValue = data.referenceValue;
+        try {
+            this.referenceValue = Long.parseLong(data.referenceValue == null ? "0" : data.referenceValue);
+        } catch (NumberFormatException e) {
+            if (this.referenceMode == REFERENCE_SET_VALUE) {
+                throw new WiredSaveException("Reference value must be a signed 64-bit integer");
+            }
+            this.referenceValue = 0L;
+        }
         this.targetVariableName = this.normalizeTargetVariableName(this.targetVariableType, data.targetVariable);
         this.referenceVariableName = this.normalizeReferenceVariableName(this.referenceVariableType, data.referenceVariable);
+        this.targetAddress = this.normalizeAddress(data.targetAddress);
+        this.referenceAddress = this.normalizeAddress(data.referenceAddress);
         this.loadSelectedItems(settings.getFurniIds());
         this.setDelay(delay);
 
         if (this.targetVariableName.isEmpty()) {
             throw new WiredSaveException("Choose a variable to modify");
+        }
+
+        InteractionWiredVariable targetDefinition = this.getDefinition(this.targetVariableType, this.targetVariableName);
+        if (targetDefinition != null && targetDefinition.isArray()) {
+            WiredResolvedArrayTarget target = WiredResolvedArrayTarget.resolve(
+                    this.getRoom(), targetDefinition);
+            if (target == null || !target.isWritable()) {
+                throw new WiredSaveException("Choose a writable array variable");
+            }
+            if (WiredArrayOperation.fromCode(intParams[1]) == null) {
+                throw new WiredSaveException("Invalid array arithmetic operation");
+            }
+            if (!this.targetAddress.isValidFor(targetDefinition.getArrayDefinition(), true)) {
+                throw new WiredSaveException("Invalid target array address");
+            }
+        }
+
+        if (this.referenceMode == REFERENCE_FROM_VARIABLE) {
+            InteractionWiredVariable referenceDefinition = this.getDefinition(this.referenceVariableType, this.referenceVariableName);
+            if (referenceDefinition != null && referenceDefinition.isArray() &&
+                    !this.referenceAddress.isValidFor(referenceDefinition.getArrayDefinition(), true)) {
+                throw new WiredSaveException("Invalid reference array address");
+            }
         }
 
         return true;
@@ -138,7 +184,7 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         return WiredManager.getGson().toJson(new JsonData(
                 this.targetVariableName,
                 this.referenceVariableName,
-                this.referenceValue,
+                Long.toString(this.referenceValue),
                 null,
                 null,
                 null,
@@ -155,7 +201,10 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
                 this.referenceVariableType,
                 this.destinationSource,
                 this.referenceSource,
-                this.getDelay()
+                this.getDelay(),
+                this.targetAddress,
+                this.referenceAddress,
+                null
         ));
     }
 
@@ -177,13 +226,19 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
 
         this.targetVariableName = data.targetVariable == null ? "" : data.targetVariable;
         this.referenceVariableName = data.referenceVariable == null ? "" : data.referenceVariable;
-        this.referenceValue = data.referenceValue;
+        try {
+            this.referenceValue = Long.parseLong(data.referenceValue == null ? "0" : data.referenceValue);
+        } catch (NumberFormatException ignored) {
+            this.referenceValue = 0L;
+        }
         this.targetVariableType = this.normalizeVariableType(data.targetVariableType);
         this.operation = Operation.normalize(data.operation).code;
         this.referenceMode = data.referenceMode == REFERENCE_FROM_VARIABLE ? REFERENCE_FROM_VARIABLE : REFERENCE_SET_VALUE;
         this.referenceVariableType = this.normalizeVariableType(data.referenceVariableType);
         this.destinationSource = this.normalizeSource(this.targetVariableType, data.destinationSource);
         this.referenceSource = this.normalizeSource(this.referenceVariableType, data.referenceSource);
+        this.targetAddress = this.normalizeAddress(data.targetAddress);
+        this.referenceAddress = this.normalizeAddress(data.referenceAddress);
         this.loadSelectedItems(data.itemIds);
         this.setDelay(data.delay);
     }
@@ -199,8 +254,13 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         List<String> contextVariables = this.getEditableVariableNames(room, WiredVariableType.CONTEXT, false);
         List<String> contextValueVariables = this.getReadableVariableNames(room, WiredVariableType.CONTEXT);
         Map<String, List<String>> subVariables = this.getEditorSubVariables(room);
+        Map<String, List<String>> destinationSubVariables =
+                this.getDestinationEditorSubVariables(room);
         message.appendBoolean(false);
-        boolean needsFurniSelection = this.targetVariableType == VARIABLE_TYPE_FURNI || (this.referenceMode == REFERENCE_FROM_VARIABLE && this.referenceVariableType == VARIABLE_TYPE_FURNI);
+        boolean needsFurniSelection = this.targetVariableType == VARIABLE_TYPE_FURNI ||
+                (this.referenceMode == REFERENCE_FROM_VARIABLE && this.referenceVariableType == VARIABLE_TYPE_FURNI) ||
+                (this.targetAddress.indexMode == WiredArrayAddress.INDEX_FROM_VARIABLE && this.targetAddress.indexVariableType == VARIABLE_TYPE_FURNI) ||
+                (this.referenceAddress.indexMode == WiredArrayAddress.INDEX_FROM_VARIABLE && this.referenceAddress.indexVariableType == VARIABLE_TYPE_FURNI);
         message.appendInt(needsFurniSelection ? WiredManager.MAXIMUM_FURNI_SELECTION : 0);
         message.appendInt(needsFurniSelection ? this.items.size() : 0);
         if (needsFurniSelection) {
@@ -210,10 +270,10 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         }
         message.appendInt(this.getBaseItem().getSpriteId());
         message.appendInt(this.getId());
-        message.appendString(WiredManager.getGson().toJson(new JsonData(
+        JsonData editorData = new JsonData(
                 this.targetVariableName,
                 this.referenceVariableName,
-                this.referenceValue,
+                Long.toString(this.referenceValue),
                 globalVariables,
                 globalValueVariables,
                 furniVariables,
@@ -230,8 +290,13 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
                 this.referenceVariableType,
                 this.destinationSource,
                 this.referenceSource,
-                this.getDelay()
-        )));
+                this.getDelay(),
+                this.targetAddress,
+                this.referenceAddress,
+                WiredVariableEditorDefinition.collect(room, WiredVariableType.GLOBAL, WiredVariableType.FURNI, WiredVariableType.USER, WiredVariableType.CONTEXT)
+        );
+        editorData.destinationSubVariables = destinationSubVariables;
+        message.appendString(WiredManager.getGson().toJson(editorData));
         message.appendInt(6);
         message.appendInt(this.targetVariableType);
         message.appendInt(this.operation);
@@ -257,6 +322,8 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         this.referenceValue = 0L;
         this.targetVariableName = "";
         this.referenceVariableName = "";
+        this.targetAddress = new WiredArrayAddress();
+        this.referenceAddress = new WiredArrayAddress();
         this.items.clear();
         this.setDelay(0);
     }
@@ -269,7 +336,9 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
     @Override
     public boolean requiresTriggeringUser() {
         return (this.targetVariableType == VARIABLE_TYPE_USER && this.destinationSource == WiredSources.SOURCE_TRIGGER) ||
-                (this.referenceMode == REFERENCE_FROM_VARIABLE && this.referenceVariableType == VARIABLE_TYPE_USER && this.referenceSource == WiredSources.SOURCE_TRIGGER);
+                (this.referenceMode == REFERENCE_FROM_VARIABLE && this.referenceVariableType == VARIABLE_TYPE_USER && this.referenceSource == WiredSources.SOURCE_TRIGGER) ||
+                (this.targetAddress.indexMode == WiredArrayAddress.INDEX_FROM_VARIABLE && this.targetAddress.indexVariableType == VARIABLE_TYPE_USER && this.targetAddress.indexVariableSource == WiredSources.SOURCE_TRIGGER) ||
+                (this.referenceAddress.indexMode == WiredArrayAddress.INDEX_FROM_VARIABLE && this.referenceAddress.indexVariableType == VARIABLE_TYPE_USER && this.referenceAddress.indexVariableSource == WiredSources.SOURCE_TRIGGER);
     }
 
     @Override
@@ -315,6 +384,43 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         Room room = ctx.room();
         RoomUnit roomUnit = ctx.actor().orElse(null);
 
+        if (this.targetVariableType == VARIABLE_TYPE_CONTEXT &&
+                WiredArrayCapturePath.parse(this.targetVariableName) != null) {
+            Long reference = this.resolveReferenceValue(ctx, roomUnit, 0, 0);
+            WiredArrayOperation arrayOperation = WiredArrayOperation.fromCode(this.operation);
+            if (reference == null || arrayOperation == null) return false;
+
+            WiredArrayCapturePath capturePath =
+                    WiredArrayCapturePath.parse(this.targetVariableName);
+            WiredArrayCapture capture = capturePath == null
+                    ? null
+                    : ctx.state().getArrayCapture(capturePath.alias);
+            WiredResolvedArrayTarget capturedTarget =
+                    capture == null ? null : capture.getTarget();
+            if (capture == null || !capture.isFound() || capturedTarget == null) {
+                return false;
+            }
+            WiredArrayReadService.Owner capturedOwner =
+                    capture.getPhysicalDefinition().getType() == WiredVariableType.CONTEXT
+                            ? WiredArrayReadService.Owner.context()
+                            : WiredArrayReadService.Owner.stored(
+                                    capture.getOwnerType(), capture.getOwnerId());
+            if (!WiredArrayMutationGuard.allowFieldMutations(
+                    ctx, capturedTarget, List.of(capturedOwner),
+                    capture.getCapturedIndex())) {
+                return false;
+            }
+
+            WiredArrayMutationOutcome outcome = ctx.state().mutateCapturedArrayFieldOperation(
+                    this.targetVariableName, arrayOperation, reference);
+            if (!outcome.isCommitted()) return false;
+
+            WiredArrayChangeEventDispatcher.dispatch(
+                    ctx, this, roomUnit, outcome,
+                    ctx.state().getCapturedArrayTarget(this.targetVariableName));
+            return true;
+        }
+
         if (WiredExtraTimeUtilities.normalizeGeneratedVariableName(this.targetVariableName).equals(this.targetVariableName)) {
             return this.changeGeneratedValue(ctx, roomUnit);
         }
@@ -327,7 +433,7 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
             return this.changeInternalValue(ctx, roomUnit);
         }
 
-        InteractionWiredVariable target = room.getRoomSpecialTypes().getVariable(WiredVariableType.fromCode(this.targetVariableType), this.targetVariableName);
+        InteractionWiredVariable target = room.getRoomSpecialTypes().getVariableDefinition(WiredVariableType.fromCode(this.targetVariableType), this.targetVariableName);
 
         if (target == null || !target.hasValue()) {
             return false;
@@ -335,6 +441,10 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
 
         if (target.getType() == WiredVariableType.CONTEXT) {
             return this.changeContextValue(ctx, target);
+        }
+
+        if (target.isArray()) {
+            return this.changeArrayValues(ctx, target);
         }
 
         if (target.getType() == WiredVariableType.FURNI) {
@@ -359,6 +469,77 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         }
 
         return this.changeOwnerValue(room, roomUnit, target, this.resolveUserId(room, roomUnit), this.resolveFirstItemId(ctx, this.referenceSource), ctx);
+    }
+
+    private boolean changeArrayValues(
+            WiredContext ctx, InteractionWiredVariable target) {
+        WiredResolvedArrayTarget resolvedTarget =
+                WiredResolvedArrayTarget.resolve(ctx.room(), target);
+        Integer index = this.resolveArrayIndex(ctx, this.targetAddress, target);
+        WiredArrayOperation arrayOperation =
+                WiredArrayOperation.fromCode(this.operation);
+        if (resolvedTarget == null || !resolvedTarget.isWritable() ||
+                index == null || arrayOperation == null) {
+            return false;
+        }
+
+        List<WiredArrayReadService.Owner> owners =
+                WiredArrayMutationGuard.distinctOwners(
+                        WiredArrayReadService.resolveOwners(
+                                ctx, this, this.items, target,
+                                this.destinationSource));
+        if (owners.isEmpty()) return false;
+
+        List<WiredArrayReadService.Owner> mutationOwners =
+                new ArrayList<>(owners.size());
+        List<RoomUnit> mutationActors =
+                new ArrayList<>(owners.size());
+        List<WiredArrayFieldMutation> mutations =
+                new ArrayList<>(owners.size());
+        for (WiredArrayReadService.Owner owner : owners) {
+            RoomUnit actor = owner.unit() == null
+                    ? ctx.actor().orElse(null)
+                    : owner.unit();
+            int userId = owner.ownerType == WiredVariableStore.OWNER_USER
+                    ? owner.ownerId
+                    : 0;
+            int itemId = owner.ownerType == WiredVariableStore.OWNER_ITEM
+                    ? owner.ownerId
+                    : 0;
+            Long reference = this.resolveOwnerReferenceValue(
+                    ctx.room(), actor, userId, itemId, ctx);
+            if (reference == null) continue;
+            mutationOwners.add(owner);
+            mutationActors.add(actor);
+            mutations.add(new WiredArrayFieldMutation(
+                    owner.ownerType, owner.ownerId, index,
+                    this.targetAddress.fieldId, arrayOperation, reference));
+        }
+        if (mutationOwners.isEmpty() ||
+                !WiredArrayMutationGuard.allowFieldMutations(
+                        ctx, resolvedTarget, mutationOwners, index)) {
+            return false;
+        }
+
+        List<WiredArrayMutationOutcome> outcomes = resolvedTarget
+                .getPhysicalDefinition()
+                .mutateArrayFieldOperations(mutations);
+        boolean changed = false;
+        for (int mutationIndex = 0;
+             mutationIndex < outcomes.size();
+             mutationIndex++) {
+            WiredArrayMutationOutcome outcome =
+                    outcomes.get(mutationIndex);
+            if (!outcome.isCommitted()) continue;
+            target.activateBox(
+                    ctx.room(), mutationActors.get(mutationIndex),
+                    System.currentTimeMillis());
+            WiredArrayChangeEventDispatcher.dispatch(
+                    ctx, this, mutationActors.get(mutationIndex),
+                    outcome, resolvedTarget);
+            changed = true;
+        }
+        return changed;
     }
 
     private boolean changeGeneratedValue(WiredContext ctx, RoomUnit roomUnit) {
@@ -440,36 +621,38 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
      * The context variable must already have been given a value this execution via GiveVariable.
      */
     private boolean changeContextValue(WiredContext ctx, InteractionWiredVariable targetDef) {
+        if (targetDef.isArray()) {
+            Long reference = this.resolveReferenceValue(ctx, ctx.actor().orElse(null), 0, 0);
+            Integer index = this.resolveArrayIndex(ctx, this.targetAddress, targetDef);
+            WiredArrayOperation arrayOperation = WiredArrayOperation.fromCode(this.operation);
+            if (reference == null || index == null || arrayOperation == null ||
+                    !ctx.state().hasContextArray(this.targetVariableName)) return false;
+            WiredResolvedArrayTarget resolvedTarget =
+                    WiredResolvedArrayTarget.resolve(ctx.room(), targetDef);
+            if (resolvedTarget == null ||
+                    !WiredArrayMutationGuard.allowFieldMutations(
+                            ctx, resolvedTarget,
+                            List.of(WiredArrayReadService.Owner.context()),
+                            index)) {
+                return false;
+            }
+
+            WiredArrayMutationOutcome outcome = ctx.state().mutateContextArrayFieldOperation(
+                    this.targetVariableName, index, this.targetAddress.fieldId, arrayOperation, reference);
+            if (!outcome.isCommitted()) return false;
+
+            targetDef.activateBox(ctx.room(), ctx.actor().orElse(null), System.currentTimeMillis());
+            WiredArrayChangeEventDispatcher.dispatch(
+                    ctx, this, ctx.actor().orElse(null), outcome);
+            return true;
+        }
+
         if (!ctx.state().hasContextValue(this.targetVariableName)) {
             return false; // context var must be initialized first via GiveVariable
         }
 
-        long reference = this.referenceValue;
-
-        if (this.referenceMode == REFERENCE_FROM_VARIABLE && !this.referenceVariableName.isEmpty()) {
-            if (this.referenceVariableType == VARIABLE_TYPE_CONTEXT) {
-                if (!ctx.state().hasContextValue(this.referenceVariableName)) return false;
-                reference = ctx.state().getContextValue(this.referenceVariableName);
-            } else {
-                InteractionWiredVariable refVar = ctx.room().getRoomSpecialTypes().getVariable(
-                        WiredVariableType.fromCode(this.referenceVariableType), this.referenceVariableName);
-                if (refVar == null || !refVar.hasValue()) return false;
-
-                if (refVar.getType() == WiredVariableType.USER) {
-                    List<RoomUnit> users = this.resolveUsers(ctx, this.referenceSource);
-                    if (users.isEmpty()) return false;
-                    int userId = this.resolveUserId(ctx.room(), users.get(0));
-                    if (userId <= 0 || !refVar.hasValue(userId)) return false;
-                    reference = refVar.getValue(userId);
-                } else if (refVar.getType() == WiredVariableType.FURNI) {
-                    List<HabboItem> refItems = this.resolveItems(ctx, this.referenceSource);
-                    if (refItems.isEmpty() || refItems.get(0) == null) return false;
-                    reference = refVar.getValue(refItems.get(0).getId());
-                } else {
-                    reference = refVar.getValue();
-                }
-            }
-        }
+        Long reference = this.resolveReferenceValue(ctx, ctx.actor().orElse(null), 0, 0);
+        if (reference == null) return false;
 
         long current = ctx.state().getContextValue(this.targetVariableName);
         ctx.state().setContextValue(this.targetVariableName, this.applyOperation(current, reference));
@@ -517,26 +700,40 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
     }
 
     private boolean changeOwnerValue(Room room, RoomUnit roomUnit, InteractionWiredVariable target, int userId, int itemId, WiredContext ctx) {
-        long reference = this.referenceValue;
+        Long reference = this.resolveOwnerReferenceValue(
+                room, roomUnit, userId, itemId, ctx);
+        if (reference == null) return false;
 
-        if (this.referenceMode == REFERENCE_FROM_VARIABLE) {
-            if (this.referenceVariableType == VARIABLE_TYPE_CONTEXT && ctx != null) {
-                // Reference is a context variable — read from the current execution state.
-                if (!ctx.state().hasContextValue(this.referenceVariableName)) return false;
-                reference = ctx.state().getContextValue(this.referenceVariableName);
-            } else if (this.isInternalVariableName(this.referenceVariableType, this.referenceVariableName)) {
-                Long internalReference = this.readInternalValue(ctx, roomUnit, userId, itemId, this.referenceVariableType, this.referenceVariableName);
-                if (internalReference == null) return false;
-                reference = internalReference;
+        if (target.isArray()) {
+            if (ctx == null) return false;
+            WiredResolvedArrayTarget resolvedTarget =
+                    WiredResolvedArrayTarget.resolve(room, target);
+            if (resolvedTarget == null || !resolvedTarget.isWritable()) return false;
+            Integer index = this.resolveArrayIndex(ctx, this.targetAddress, target);
+            WiredArrayOperation arrayOperation = WiredArrayOperation.fromCode(this.operation);
+            if (index == null || arrayOperation == null) return false;
+
+            int ownerType;
+            int ownerId;
+            if (target.getType() == WiredVariableType.USER) {
+                ownerType = WiredVariableStore.OWNER_USER;
+                ownerId = userId;
+            } else if (target.getType() == WiredVariableType.FURNI) {
+                ownerType = WiredVariableStore.OWNER_ITEM;
+                ownerId = itemId;
             } else {
-                InteractionWiredVariable referenceVariable = room.getRoomSpecialTypes().getVariable(WiredVariableType.fromCode(this.referenceVariableType), this.referenceVariableName);
-
-                if (referenceVariable == null || !referenceVariable.hasValue() || !this.canRead(referenceVariable, userId, itemId)) {
-                    return false;
-                }
-
-                reference = this.readValue(referenceVariable, userId, itemId);
+                ownerType = WiredVariableStore.OWNER_ROOM;
+                ownerId = 0;
             }
+            WiredArrayMutationOutcome outcome = resolvedTarget.mutateField(
+                    ctx, ownerType, ownerId, index, this.targetAddress.fieldId,
+                    arrayOperation, reference);
+            if (!outcome.isCommitted()) return false;
+
+            target.activateBox(room, roomUnit, System.currentTimeMillis());
+            WiredArrayChangeEventDispatcher.dispatch(
+                    ctx, this, roomUnit, outcome, resolvedTarget);
+            return true;
         }
 
         if (!this.canRead(target, userId, itemId)) {
@@ -549,6 +746,46 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         Emulator.getThreading().run(target);
         target.activateBox(room, roomUnit, System.currentTimeMillis());
         return true;
+    }
+
+    private Long resolveOwnerReferenceValue(
+            Room room, RoomUnit roomUnit, int userId, int itemId,
+            WiredContext ctx) {
+        if (this.referenceMode != REFERENCE_FROM_VARIABLE) {
+            return this.referenceValue;
+        }
+        if (this.referenceVariableType == VARIABLE_TYPE_CONTEXT &&
+                ctx != null) {
+            return this.resolveReferenceValue(
+                    ctx, roomUnit, userId, itemId);
+        }
+        if (this.isInternalVariableName(
+                this.referenceVariableType,
+                this.referenceVariableName)) {
+            return this.readInternalValue(
+                    ctx, roomUnit, userId, itemId,
+                    this.referenceVariableType,
+                    this.referenceVariableName);
+        }
+
+        InteractionWiredVariable referenceVariable =
+                room.getRoomSpecialTypes().getVariableDefinition(
+                        WiredVariableType.fromCode(
+                                this.referenceVariableType),
+                        this.referenceVariableName);
+        if (referenceVariable == null ||
+                !referenceVariable.hasValue() ||
+                (!referenceVariable.isArray() &&
+                        !this.canRead(
+                                referenceVariable, userId, itemId))) {
+            return null;
+        }
+        if (referenceVariable.isArray()) {
+            return this.readArrayReference(
+                    ctx, referenceVariable, this.referenceAddress,
+                    this.referenceSource);
+        }
+        return this.readValue(referenceVariable, userId, itemId);
     }
 
     private int resolveUserId(Room room, RoomUnit roomUnit) {
@@ -618,6 +855,24 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         return SOURCE_GLOBAL;
     }
 
+    private WiredArrayAddress normalizeAddress(WiredArrayAddress address) {
+        WiredArrayAddress normalized = address == null ? new WiredArrayAddress() : address;
+        normalized.indexVariableType = this.normalizeVariableType(normalized.indexVariableType);
+        normalized.indexVariable = this.normalizeReferenceVariableName(
+                normalized.indexVariableType, normalized.indexVariable);
+        normalized.indexVariableSource = this.normalizeSource(
+                normalized.indexVariableType, normalized.indexVariableSource);
+        return normalized;
+    }
+
+    private InteractionWiredVariable getDefinition(int variableType, String variableName) {
+        Room room = this.getRoom();
+        return room == null
+                ? null
+                : room.getRoomSpecialTypes().getVariableDefinition(
+                        WiredVariableType.fromCode(variableType), variableName);
+    }
+
     private List<HabboItem> resolveItems(WiredContext ctx, int source) {
         if (ctx == null) {
             return new ArrayList<>(this.items);
@@ -663,8 +918,9 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
     private List<String> getEditableVariableNames(Room room, WiredVariableType type, boolean requireValue) {
         List<String> variables = this.withEditableInternalVariables(room == null
                 ? new ArrayList<>()
-                : room.getRoomSpecialTypes().getVariables(type).stream()
+                : room.getRoomSpecialTypes().getVariableDefinitions(type).stream()
                 .filter(variable -> !requireValue || variable.hasValue())
+                .filter(variable -> this.isWritableTargetDefinition(room, variable))
                 .map(InteractionWiredVariable::getVariableName)
                 .filter(name -> name != null && !name.isEmpty())
                 .sorted()
@@ -674,14 +930,26 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
             WiredExtraTimeUtilities.appendWritableVariableNames(room, type, variables);
             WiredExtraLevelUpSystem.appendWritableVariableNames(room, type, variables);
         }
+        if (type == WiredVariableType.CONTEXT) {
+            WiredExtraArrayEntryCapturer.appendCapturePicker(
+                    this, room, variables, new LinkedHashMap<>(), false);
+        }
 
         return variables;
+    }
+
+    private boolean isWritableTargetDefinition(
+            Room room, InteractionWiredVariable variable) {
+        if (variable == null || !variable.isArray()) return true;
+        WiredResolvedArrayTarget target =
+                WiredResolvedArrayTarget.resolve(room, variable);
+        return target != null && target.isWritable();
     }
 
     private List<String> getReadableVariableNames(Room room, WiredVariableType type) {
         List<String> variables = this.withReadableInternalVariables(room == null
                 ? new ArrayList<>()
-                : room.getRoomSpecialTypes().getVariables(type).stream()
+                : room.getRoomSpecialTypes().getVariableDefinitions(type).stream()
                 .filter(InteractionWiredVariable::hasValue)
                 .map(InteractionWiredVariable::getVariableName)
                 .filter(name -> name != null && !name.isEmpty())
@@ -690,6 +958,10 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
 
         WiredExtraTimeUtilities.appendWritableVariableNames(room, type, variables);
         WiredExtraLevelUpSystem.appendWritableVariableNames(room, type, variables);
+        if (type == WiredVariableType.CONTEXT) {
+            WiredExtraArrayEntryCapturer.appendCapturePicker(
+                    this, room, variables, new LinkedHashMap<>(), true);
+        }
 
         return variables;
     }
@@ -723,6 +995,14 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
     }
 
     private Map<String, List<String>> getEditorSubVariables(Room room) {
+        return this.getEditorSubVariables(room, true);
+    }
+
+    private Map<String, List<String>> getDestinationEditorSubVariables(Room room) {
+        return this.getEditorSubVariables(room, false);
+    }
+
+    private Map<String, List<String>> getEditorSubVariables(Room room, boolean readableCapture) {
         Map<String, List<String>> subVariables = new LinkedHashMap<>();
 
         WiredInternalVariableHelper.appendEditorSubVariables(subVariables);
@@ -732,11 +1012,18 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         WiredExtraLevelUpSystem.appendWritableEditorSubVariables(room, WiredVariableType.GLOBAL, new ArrayList<>(), subVariables);
         WiredExtraLevelUpSystem.appendWritableEditorSubVariables(room, WiredVariableType.FURNI, new ArrayList<>(), subVariables);
         WiredExtraLevelUpSystem.appendWritableEditorSubVariables(room, WiredVariableType.USER, new ArrayList<>(), subVariables);
+        WiredExtraArrayEntryCapturer.appendCapturePicker(
+                this, room, new ArrayList<>(), subVariables, readableCapture);
 
         return subVariables;
     }
 
     private String normalizeTargetVariableName(int variableType, String variableName) {
+        if (variableType == VARIABLE_TYPE_CONTEXT) {
+            String captured = WiredExtraArrayEntryCapturer.normalizeCaptureVariableName(
+                    this, this.getRoom(), variableName, true);
+            if (!captured.isEmpty()) return captured;
+        }
         if (variableName != null) {
             String normalizedInternalName = variableName.toLowerCase().trim();
 
@@ -749,6 +1036,11 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
     }
 
     private String normalizeReferenceVariableName(int variableType, String variableName) {
+        if (variableType == VARIABLE_TYPE_CONTEXT) {
+            String captured = WiredExtraArrayEntryCapturer.normalizeCaptureVariableName(
+                    this, this.getRoom(), variableName, false);
+            if (!captured.isEmpty()) return captured;
+        }
         if (variableName != null) {
             String normalizedInternalName = variableName.toLowerCase().trim();
 
@@ -863,7 +1155,15 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         }
 
         if (this.referenceVariableType == VARIABLE_TYPE_CONTEXT) {
-            return ctx != null && ctx.state().hasContextValue(this.referenceVariableName) ? ctx.state().getContextValue(this.referenceVariableName) : null;
+            InteractionWiredVariable contextDefinition = ctx == null
+                    ? null
+                    : ctx.room().getRoomSpecialTypes().getVariableDefinition(WiredVariableType.CONTEXT, this.referenceVariableName);
+            if (contextDefinition != null && contextDefinition.isArray()) {
+                return this.readArrayReference(ctx, contextDefinition, this.referenceAddress, this.referenceSource);
+            }
+            return ctx != null && ctx.state().hasContextValue(this.referenceVariableName)
+                    ? ctx.state().getContextValue(this.referenceVariableName)
+                    : null;
         }
 
         if (this.isInternalVariableName(this.referenceVariableType, this.referenceVariableName)) {
@@ -884,8 +1184,12 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
             return WiredExtraLevelUpSystem.readGeneratedVariableValue(ctx.room(), generatedType, generatedOwnerId, this.referenceVariableName);
         }
 
-        InteractionWiredVariable referenceVariable = ctx.room().getRoomSpecialTypes().getVariable(WiredVariableType.fromCode(this.referenceVariableType), this.referenceVariableName);
+        InteractionWiredVariable referenceVariable = ctx.room().getRoomSpecialTypes().getVariableDefinition(WiredVariableType.fromCode(this.referenceVariableType), this.referenceVariableName);
         if (referenceVariable == null || !referenceVariable.hasValue()) return null;
+
+        if (referenceVariable.isArray()) {
+            return this.readArrayReference(ctx, referenceVariable, this.referenceAddress, this.referenceSource);
+        }
 
         if (referenceVariable.getType() == WiredVariableType.FURNI) {
             List<HabboItem> refItems = this.resolveItems(ctx, this.referenceSource);
@@ -902,6 +1206,90 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         }
 
         return referenceVariable.getValue();
+    }
+
+    private Integer resolveArrayIndex(WiredContext ctx, WiredArrayAddress address,
+                                      InteractionWiredVariable arrayDefinition) {
+        if (ctx == null || address == null || arrayDefinition == null || !arrayDefinition.isArray() ||
+                !address.hasValidMode()) return null;
+
+        long index = address.indexValue;
+        if (address.indexMode == WiredArrayAddress.INDEX_FROM_VARIABLE) {
+            Long resolved = this.resolveAddressVariableValue(ctx, address);
+            if (resolved == null) return null;
+            index = resolved;
+        }
+
+        return index >= 0L && index < arrayDefinition.getArrayDefinition().getMaxEntries()
+                ? (int) index
+                : null;
+    }
+
+    private Long readArrayReference(WiredContext ctx, InteractionWiredVariable definition,
+                                    WiredArrayAddress address, int ownerSource) {
+        if (ctx == null || definition == null || address == null ||
+                definition.getArrayDefinition() == null ||
+                definition.getArrayDefinition().getField(address.fieldId) == null) return null;
+        Integer index = this.resolveArrayIndex(ctx, address, definition);
+        if (index == null) return null;
+
+        for (WiredArrayReadService.Owner owner :
+                WiredArrayReadService.resolveOwners(
+                        ctx, this, this.items, definition, ownerSource)) {
+            Long value = WiredArrayReadService.readField(
+                    ctx, definition, owner, index, address.fieldId);
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    /** Index variables remain scalar-only and never coerce another array to index zero. */
+    private Long resolveAddressVariableValue(WiredContext ctx, WiredArrayAddress address) {
+        if (address.indexVariable == null || address.indexVariable.isEmpty()) return null;
+        WiredVariableType type = WiredVariableType.fromCode(address.indexVariableType);
+
+        if (type == WiredVariableType.CONTEXT) {
+            InteractionWiredVariable definition = ctx.room().getRoomSpecialTypes()
+                    .getVariableDefinition(type, address.indexVariable);
+            if (definition != null && definition.isArray()) return null;
+            return ctx.state().hasContextValue(address.indexVariable)
+                    ? ctx.state().getContextValue(address.indexVariable)
+                    : null;
+        }
+
+        if (WiredInternalVariableHelper.isValueVariable(type, address.indexVariable)) {
+            if (type == WiredVariableType.GLOBAL) {
+                return WiredInternalVariableHelper.readValue(ctx, type, null, null, address.indexVariable);
+            }
+            if (type == WiredVariableType.FURNI) {
+                for (HabboItem item : this.resolveItems(ctx, address.indexVariableSource)) {
+                    Long value = WiredInternalVariableHelper.readValue(ctx, type, item, null, address.indexVariable);
+                    if (value != null) return value;
+                }
+                return null;
+            }
+            for (RoomUnit unit : this.resolveUsers(ctx, address.indexVariableSource)) {
+                Long value = WiredInternalVariableHelper.readValue(ctx, type, null, unit, address.indexVariable);
+                if (value != null) return value;
+            }
+            return null;
+        }
+
+        InteractionWiredVariable variable = ctx.room().getRoomSpecialTypes()
+                .getVariable(type, address.indexVariable);
+        if (variable == null || !variable.hasValue()) return null;
+        if (type == WiredVariableType.GLOBAL) return variable.getValue();
+        if (type == WiredVariableType.FURNI) {
+            for (HabboItem item : this.resolveItems(ctx, address.indexVariableSource)) {
+                if (item != null && variable.hasValue(item.getId())) return variable.getValue(item.getId());
+            }
+            return null;
+        }
+        for (RoomUnit unit : this.resolveUsers(ctx, address.indexVariableSource)) {
+            int ownerId = this.resolveUserId(ctx.room(), unit);
+            if (ownerId > 0 && variable.hasValue(ownerId)) return variable.getValue(ownerId);
+        }
+        return null;
     }
 
     private Long readInternalValue(WiredContext ctx, RoomUnit roomUnit, int userId, int itemId, int variableType, String variableName) {
@@ -1313,7 +1701,7 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
     static class JsonData {
         String targetVariable = "";
         String referenceVariable = "";
-        long referenceValue = 0L;
+        String referenceValue = "0";
         List<String> globalVariables = new ArrayList<>();
         List<String> globalValueVariables = new ArrayList<>();
         List<String> furniVariables = new ArrayList<>();
@@ -1323,6 +1711,7 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         List<String> contextVariables = new ArrayList<>();
         List<String> contextValueVariables = new ArrayList<>();
         Map<String, List<String>> subVariables = new LinkedHashMap<>();
+        Map<String, List<String>> destinationSubVariables = new LinkedHashMap<>();
         List<Integer> itemIds = new ArrayList<>();
         int targetVariableType = VARIABLE_TYPE_GLOBAL;
         int operation = Operation.ASSIGN.code;
@@ -1331,11 +1720,15 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         int destinationSource = SOURCE_GLOBAL;
         int referenceSource = SOURCE_GLOBAL;
         int delay = 0;
+        WiredArrayAddress targetAddress = new WiredArrayAddress();
+        WiredArrayAddress referenceAddress = new WiredArrayAddress();
+        List<WiredVariableEditorDefinition> variableDefinitions = new ArrayList<>();
+        int metadataVersion = 2;
 
         JsonData() {
         }
 
-        JsonData(String targetVariable, String referenceVariable, long referenceValue, List<String> globalVariables, List<String> globalValueVariables, List<String> furniVariables, List<String> userVariables, List<String> furniValueVariables, List<String> userValueVariables, List<String> contextVariables, List<String> contextValueVariables, Map<String, List<String>> subVariables, List<Integer> itemIds, int targetVariableType, int operation, int referenceMode, int referenceVariableType, int destinationSource, int referenceSource, int delay) {
+        JsonData(String targetVariable, String referenceVariable, String referenceValue, List<String> globalVariables, List<String> globalValueVariables, List<String> furniVariables, List<String> userVariables, List<String> furniValueVariables, List<String> userValueVariables, List<String> contextVariables, List<String> contextValueVariables, Map<String, List<String>> subVariables, List<Integer> itemIds, int targetVariableType, int operation, int referenceMode, int referenceVariableType, int destinationSource, int referenceSource, int delay, WiredArrayAddress targetAddress, WiredArrayAddress referenceAddress, List<WiredVariableEditorDefinition> variableDefinitions) {
             this.targetVariable = targetVariable;
             this.referenceVariable = referenceVariable;
             this.referenceValue = referenceValue;
@@ -1356,6 +1749,9 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
             this.destinationSource = destinationSource;
             this.referenceSource = referenceSource;
             this.delay = delay;
+            if (targetAddress != null) this.targetAddress = targetAddress;
+            if (referenceAddress != null) this.referenceAddress = referenceAddress;
+            if (variableDefinitions != null) this.variableDefinitions = variableDefinitions;
         }
     }
 }

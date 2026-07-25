@@ -31,6 +31,7 @@ public enum WiredConditionType {
     HAS_VARIABLE(30),
     VARIABLE_VALUE_MATCHES(31),
     VARIABLE_AGE_MATCHES(32),
+    CHECK_ARRAY(33),
 
 
 

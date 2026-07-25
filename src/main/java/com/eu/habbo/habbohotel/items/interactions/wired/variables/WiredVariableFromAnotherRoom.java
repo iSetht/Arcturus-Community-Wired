@@ -7,8 +7,14 @@ import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.wired.WiredVariablePersistence;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayDefinition;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayFieldDefinition;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayFormat;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayMode;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableDefinitionData;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableStore;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableValueShape;
 import com.eu.habbo.messages.ServerMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +79,28 @@ public class WiredVariableFromAnotherRoom extends InteractionWiredVariable {
         return this.sourceVariableName;
     }
 
+    public boolean isReadOnly() {
+        return this.readOnly;
+    }
+
+    @Override
+    public boolean isArray() {
+        return this.getArrayDefinition() != null;
+    }
+
+    @Override
+    public WiredVariableValueShape getValueShape() {
+        return this.isArray()
+                ? WiredVariableValueShape.ARRAY
+                : WiredVariableValueShape.SINGLE;
+    }
+
+    @Override
+    public WiredArrayDefinition getArrayDefinition() {
+        ArraySource source = this.resolveArraySource(this.getDestinationRoom());
+        return source == null ? null : source.definition.getArrayDefinition();
+    }
+
     public void renameSourceReference(String newSourceVariableName) {
         String normalizedName = WiredVariableName.normalize(newSourceVariableName);
         if (!WiredVariableName.isValid(normalizedName) || this.sourceVariableName.equals(normalizedName)) {
@@ -85,6 +113,8 @@ public class WiredVariableFromAnotherRoom extends InteractionWiredVariable {
 
     @Override
     public boolean hasValue() {
+        ArraySource arraySource = this.resolveArraySource(this.getDestinationRoom());
+        if (arraySource != null) return arraySource.definition.hasValue();
         InteractionWiredVariable source = this.getSourceVariable();
         return source != null && source.hasValue();
     }
@@ -248,6 +278,7 @@ public class WiredVariableFromAnotherRoom extends InteractionWiredVariable {
         message.appendString(this.getVariableName());
         message.appendInt(this.readOnly ? 1 : 0);
         message.appendString(WiredManager.getGson().toJson(new EditorData(this.sourceRoomId, this.getType().code, this.sourceVariableName, this.getSharedRooms(editorOwnerId))));
+        this.appendArrayDefinitionMetadata(message);
     }
 
     @Override
@@ -281,6 +312,46 @@ public class WiredVariableFromAnotherRoom extends InteractionWiredVariable {
         }
 
         return source;
+    }
+
+    /**
+     * Resolves only one physical Shared Permanent Global/User array under the existing same-owner
+     * room model. References, scalars, ordinary permanent variables, and unauthorized rooms fail.
+     */
+    public ArraySource resolveArraySource(Room destinationRoom) {
+        if (destinationRoom == null || destinationRoom.getRoomSpecialTypes() == null
+                || this.sourceRoomId <= 0 || this.sourceVariableName.isEmpty()
+                || destinationRoom.getId() != this.getRoomId()
+                || destinationRoom.getOwnerId() <= 0
+                || this.ownerId > 0 && this.ownerId != destinationRoom.getOwnerId()) {
+            return null;
+        }
+
+        Room sourceRoom = Emulator.getGameEnvironment().getRoomManager()
+                .loadRoom(this.sourceRoomId, true);
+        if (sourceRoom == null || sourceRoom.getRoomSpecialTypes() == null
+                || sourceRoom.getOwnerId() != destinationRoom.getOwnerId()) {
+            return null;
+        }
+
+        InteractionWiredVariable source = sourceRoom.getRoomSpecialTypes()
+                .getVariableDefinition(this.getType(), this.sourceVariableName);
+        if (source == null || source == this
+                || source instanceof WiredVariableFromAnotherRoom
+                || source.getType() != this.getType()
+                || source.getPersistence() != WiredVariablePersistence.SHARED_PERMANENT
+                || (source.getType() != WiredVariableType.GLOBAL
+                    && source.getType() != WiredVariableType.USER)
+                || !source.isArray() || source.getArrayDefinition() == null) {
+            return null;
+        }
+        return new ArraySource(sourceRoom, source);
+    }
+
+    private Room getDestinationRoom() {
+        return this.getRoomId() <= 0
+                ? null
+                : Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId());
     }
 
     private List<RoomOption> getSharedRooms(int ownerId) {
@@ -346,8 +417,10 @@ public class WiredVariableFromAnotherRoom extends InteractionWiredVariable {
         }
 
         try {
-            VariableBoxData data = WiredManager.getGson().fromJson(wiredData, VariableBoxData.class);
-            if (data == null || data.persistence != WiredVariablePersistence.SHARED_PERMANENT.code) {
+            WiredVariableDefinitionData data = WiredManager.getGson().fromJson(
+                    wiredData, WiredVariableDefinitionData.class);
+            if (data == null ||
+                    data.persistence != WiredVariablePersistence.SHARED_PERMANENT.code) {
                 return null;
             }
 
@@ -357,14 +430,16 @@ public class WiredVariableFromAnotherRoom extends InteractionWiredVariable {
             }
 
             WiredVariableType type = "wf_var_user".equals(interactionType) ? WiredVariableType.USER : WiredVariableType.GLOBAL;
-            return new SharedVariable(type.code, name);
+            return new SharedVariable(
+                    type.code, name, WiredArrayDefinition.fromData(data));
         } catch (Exception ignored) {
             return null;
         }
     }
 
     private static SharedVariable readSharedVariable(InteractionWiredVariable variable) {
-        if (variable == null || variable instanceof WiredVariableFromAnotherRoom || variable.getPersistence() != WiredVariablePersistence.SHARED_PERMANENT) {
+        if (variable == null || variable instanceof WiredVariableFromAnotherRoom ||
+                variable.getPersistence() != WiredVariablePersistence.SHARED_PERMANENT) {
             return null;
         }
 
@@ -378,7 +453,8 @@ public class WiredVariableFromAnotherRoom extends InteractionWiredVariable {
             return null;
         }
 
-        return new SharedVariable(type.code, name);
+        return new SharedVariable(
+                type.code, name, variable.getArrayDefinition());
     }
 
     private static String safeRoomName(ResultSet set) {
@@ -409,6 +485,32 @@ public class WiredVariableFromAnotherRoom extends InteractionWiredVariable {
         } catch (Exception ignored) {
             return new ReferenceSaveData();
         }
+    }
+
+    public static boolean isEligibleSource(
+            Room destinationRoom, int sourceRoomId,
+            WiredVariableType sourceVariableType, String sourceVariableName) {
+        WiredVariableType type = normalizeSourceType(sourceVariableType);
+        String name = WiredVariableName.normalize(sourceVariableName);
+        if (destinationRoom == null || destinationRoom.getOwnerId() <= 0
+                || sourceRoomId <= 0 || !WiredVariableName.isValid(name)) {
+            return false;
+        }
+
+        Room sourceRoom = Emulator.getGameEnvironment().getRoomManager()
+                .loadRoom(sourceRoomId, true);
+        if (sourceRoom == null || sourceRoom.getRoomSpecialTypes() == null
+                || sourceRoom.getOwnerId() != destinationRoom.getOwnerId()) {
+            return false;
+        }
+
+        InteractionWiredVariable source = sourceRoom.getRoomSpecialTypes()
+                .getVariableDefinition(type, name);
+        return source != null
+                && !(source instanceof WiredVariableFromAnotherRoom)
+                && source.getType() == type
+                && source.getPersistence() == WiredVariablePersistence.SHARED_PERMANENT
+                && (type == WiredVariableType.GLOBAL || type == WiredVariableType.USER);
     }
 
     public static void retargetReferences(int ownerId, int sourceRoomId, WiredVariableType sourceVariableType, String oldSourceVariableName, String newSourceVariableName) {
@@ -536,16 +638,43 @@ public class WiredVariableFromAnotherRoom extends InteractionWiredVariable {
     static class SharedVariable {
         int type;
         String name;
+        int valueShape = WiredVariableValueShape.SINGLE.code;
+        int arrayFormat = WiredArrayFormat.SIMPLE.code;
+        int arrayMode = WiredArrayMode.LIST.code;
+        int maxEntries;
+        int schemaVersion;
+        List<WiredArrayFieldDefinition> fields = new ArrayList<>();
 
-        SharedVariable(int type, String name) {
+        SharedVariable(int type, String name, WiredArrayDefinition array) {
             this.type = type;
             this.name = name;
+            if (array != null) {
+                this.valueShape = WiredVariableValueShape.ARRAY.code;
+                this.arrayFormat = array.getFormat().code;
+                this.arrayMode = array.getMode().code;
+                this.maxEntries = array.getMaxEntries();
+                this.schemaVersion = array.getSchemaVersion();
+                this.fields = new ArrayList<>(array.getFields());
+            }
         }
     }
 
-    static class VariableBoxData {
-        String name;
-        int persistence;
+    public static final class ArraySource {
+        private final Room room;
+        private final InteractionWiredVariable definition;
+
+        public ArraySource(Room room, InteractionWiredVariable definition) {
+            this.room = room;
+            this.definition = definition;
+        }
+
+        public Room getRoom() {
+            return this.room;
+        }
+
+        public InteractionWiredVariable getDefinition() {
+            return this.definition;
+        }
     }
 
     @Override

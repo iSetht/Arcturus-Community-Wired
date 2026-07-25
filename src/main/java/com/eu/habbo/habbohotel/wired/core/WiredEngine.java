@@ -6,6 +6,7 @@ import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredExtra;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraExecutionLimit;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraArrayEntryCapturer;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraExecuteInOrder;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraChestFurniTypeScanner;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraOrEval;
@@ -48,6 +49,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * The central engine for processing wired events.
@@ -286,6 +288,7 @@ public final class WiredEngine {
             return false;
         }
 
+        captureArrayEntries(stack, ctx);
         applyChestScanners(stack, ctx);
         
         // Activate the trigger box animation
@@ -378,6 +381,27 @@ public final class WiredEngine {
             if (extra instanceof WiredExtraChestFurniTypeScanner) {
                 ((WiredExtraChestFurniTypeScanner) extra).scan(ctx);
             }
+        }
+    }
+
+    private void captureArrayEntries(WiredStack stack, WiredContext ctx) {
+        List<WiredExtraArrayEntryCapturer> capturers = stack.extras().stream()
+                .filter(extra -> extra instanceof WiredExtraArrayEntryCapturer)
+                .map(extra -> (WiredExtraArrayEntryCapturer) extra)
+                .sorted(Comparator.comparingInt(WiredExtraArrayEntryCapturer::getId))
+                .collect(Collectors.toList());
+        Map<String, Integer> aliases = new HashMap<>();
+        for (WiredExtraArrayEntryCapturer capturer : capturers) {
+            aliases.merge(capturer.getCaptureAlias(), 1, Integer::sum);
+        }
+        for (WiredExtraArrayEntryCapturer capturer : capturers) {
+            String alias = capturer.getCaptureAlias();
+            if (alias == null || alias.isEmpty()) continue;
+            if (aliases.getOrDefault(alias, 0) > 1) {
+                ctx.state().publishFailedArrayCapture(alias);
+                continue;
+            }
+            capturer.capture(ctx);
         }
     }
 

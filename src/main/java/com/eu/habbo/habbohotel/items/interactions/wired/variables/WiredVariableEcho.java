@@ -149,6 +149,7 @@ public class WiredVariableEcho extends InteractionWiredVariable {
         message.appendString(this.getVariableName());
         message.appendInt(0);
         message.appendString(WiredManager.getGson().toJson(new EditorData(this.getType().code, this.sourceVariableName, room)));
+        this.appendArrayDefinitionMetadata(message);
     }
 
     @Override

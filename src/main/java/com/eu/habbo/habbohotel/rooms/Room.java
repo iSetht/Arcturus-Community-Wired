@@ -2133,7 +2133,7 @@ public class Room implements Comparable<Room>, ISerialize, Runnable {
       return;
     }
     for (com.eu.habbo.habbohotel.items.interactions.InteractionWiredVariable variable :
-        this.roomSpecialTypes.getVariables(com.eu.habbo.habbohotel.wired.WiredVariableType.USER)) {
+        this.roomSpecialTypes.getVariableDefinitions(com.eu.habbo.habbohotel.wired.WiredVariableType.USER)) {
       variable.removeRoomActiveValue(userId);
     }
   }

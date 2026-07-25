@@ -47,6 +47,7 @@ public class WiredCreatorToolsRoomStats {
     public final List<String> furniVariables;
     public final List<String> userVariables;
     public final List<String> globalVariables;
+    public final List<WiredCreatorToolsArrayDefinition> arrayDefinitions;
 
     private WiredCreatorToolsRoomStats(
             int wiredUsage,
@@ -73,7 +74,8 @@ public class WiredCreatorToolsRoomStats {
             Map<String, String> globalValues,
             List<String> furniVariables,
             List<String> userVariables,
-            List<String> globalVariables) {
+            List<String> globalVariables,
+            List<WiredCreatorToolsArrayDefinition> arrayDefinitions) {
         this.wiredUsage = wiredUsage;
         this.wiredUsageLimit = wiredUsageLimit;
         this.heavy = heavy;
@@ -99,6 +101,7 @@ public class WiredCreatorToolsRoomStats {
         this.furniVariables = furniVariables;
         this.userVariables = userVariables;
         this.globalVariables = globalVariables;
+        this.arrayDefinitions = arrayDefinitions;
     }
 
     public static WiredCreatorToolsRoomStats fromRoom(Room room, String timezone) {
@@ -134,7 +137,8 @@ public class WiredCreatorToolsRoomStats {
                 getGlobalValues(room, furniCount, effectiveTimezone),
                 getVariableNames(room, WiredVariableType.FURNI),
                 getVariableNames(room, WiredVariableType.USER),
-                getGlobalVariableNames(room));
+                getGlobalVariableNames(room),
+                WiredCreatorToolsArrayDefinition.collect(room));
     }
 
     private static int countPermanentVariables(Room room, WiredVariableType type) {
@@ -142,7 +146,7 @@ public class WiredCreatorToolsRoomStats {
             return 0;
         }
 
-        return (int) room.getRoomSpecialTypes().getVariables(type).stream()
+        return (int) room.getRoomSpecialTypes().getVariableDefinitions(type).stream()
                 .filter(variable -> variable.getPersistence().isPermanent())
                 .count();
     }

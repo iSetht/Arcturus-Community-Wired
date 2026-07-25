@@ -2,6 +2,7 @@ package com.eu.habbo.messages.outgoing.wired;
 
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.wired.creator.WiredCreatorToolsRoomStats;
+import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.outgoing.MessageComposer;
 import com.eu.habbo.messages.outgoing.Outgoing;
@@ -55,6 +56,7 @@ public class WiredCreatorToolsRoomStatsComposer extends MessageComposer {
 
         this.response.appendInt(stats.globalVariables.size());
         stats.globalVariables.forEach(this.response::appendString);
+        this.response.appendString(WiredManager.getGson().toJson(stats.arrayDefinitions));
 
         return this.response;
     }

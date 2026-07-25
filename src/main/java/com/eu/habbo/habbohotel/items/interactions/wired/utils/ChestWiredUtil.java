@@ -11,6 +11,7 @@ import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.habbohotel.wired.core.WiredSources;
 import com.eu.habbo.habbohotel.wired.core.WiredTriggerSourceResolver;
 import com.eu.habbo.habbohotel.wired.variables.WiredInternalVariableHelper;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayCapturePath;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
 
 import java.util.ArrayList;
@@ -206,6 +207,17 @@ public final class ChestWiredUtil {
     }
 
     public static String normalizeVariableName(WiredVariableType type, String variableName) {
+        if (type == WiredVariableType.CONTEXT) {
+            WiredArrayCapturePath capturePath = WiredArrayCapturePath.parse(variableName);
+            if (capturePath != null) {
+                if (capturePath.isMetadata()) {
+                    return WiredArrayCapturePath.metadataPath(
+                            capturePath.alias, capturePath.fieldName);
+                }
+                return WiredArrayCapturePath.fieldPath(
+                        capturePath.alias, capturePath.fieldName);
+            }
+        }
         String normalized = WiredInternalVariableHelper.normalizeValueName(type, variableName);
         return normalized == null || normalized.isEmpty() ? WiredVariableName.normalize(variableName) : normalized;
     }

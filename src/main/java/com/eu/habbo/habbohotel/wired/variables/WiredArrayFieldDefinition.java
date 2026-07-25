@@ -1,0 +1,40 @@
+package com.eu.habbo.habbohotel.wired.variables;
+
+import java.util.Objects;
+
+public final class WiredArrayFieldDefinition {
+    private final int id;
+    private final String name;
+    private final int order;
+
+    public WiredArrayFieldDefinition(int id, String name, int order) {
+        this.id = id;
+        this.name = name;
+        this.order = order;
+    }
+
+    public int getId() {
+        return this.id;
+    }
+
+    public String getName() {
+        return this.name;
+    }
+
+    public int getOrder() {
+        return this.order;
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) return true;
+        if (!(object instanceof WiredArrayFieldDefinition)) return false;
+        WiredArrayFieldDefinition field = (WiredArrayFieldDefinition) object;
+        return this.id == field.id && this.order == field.order && Objects.equals(this.name, field.name);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(this.id, this.name, this.order);
+    }
+}

@@ -15,9 +15,16 @@ import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
+import com.eu.habbo.habbohotel.wired.core.WiredArrayChangeEventDispatcher;
+import com.eu.habbo.habbohotel.wired.creator.WiredCreatorToolsArrayInspection;
 import com.eu.habbo.habbohotel.wired.creator.WiredCreatorToolsInspectionValues;
 import com.eu.habbo.habbohotel.wired.core.WiredMovement;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayMutationOutcome;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayMutationGuard;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayOperation;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayReadService;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
+import com.eu.habbo.habbohotel.wired.variables.WiredResolvedArrayTarget;
 import com.eu.habbo.messages.incoming.MessageHandler;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUnitOnRollerComposer;
 import com.eu.habbo.messages.outgoing.rooms.users.RoomUserStatusComposer;
@@ -30,6 +37,7 @@ public class WiredCreatorToolsVariableActionEvent extends MessageHandler {
     private static final String ACTION_GIVE = "give";
     private static final String ACTION_REMOVE = "remove";
     private static final String ACTION_SET = "set";
+    private static final String ACTION_SET_ARRAY_FIELD = "set_array_field";
 
     @Override
     public void handle() throws Exception {
@@ -44,12 +52,24 @@ public class WiredCreatorToolsVariableActionEvent extends MessageHandler {
         String action = this.packet.readString();
         String rawVariableName = this.packet.readString();
         String variableName = rawVariableName == null ? "" : rawVariableName.trim();
-        long value = this.packet.readInt();
 
         if (!"furni".equals(sourceType) && !"user".equals(sourceType) && !"global".equals(sourceType)) {
             return;
         }
 
+        if (ACTION_SET_ARRAY_FIELD.equals(action)) {
+            String rawValue = this.packet.readString();
+            int index = this.packet.readInt();
+            int fieldId = this.packet.readInt();
+            int page = this.packet.readInt();
+            int pageSize = this.packet.readInt();
+            this.handleArrayFieldAction(
+                    room, sourceType, sourceId, variableName,
+                    rawValue, index, fieldId, page, pageSize);
+            return;
+        }
+
+        long value = this.packet.readInt();
         if (!ACTION_GIVE.equals(action) && !ACTION_REMOVE.equals(action) && !ACTION_SET.equals(action)) {
             return;
         }
@@ -187,6 +207,51 @@ public class WiredCreatorToolsVariableActionEvent extends MessageHandler {
                 : WiredCreatorToolsInspectionValues.forFurni(room, sourceId);
 
         this.client.sendResponse(new WiredCreatorToolsInspectionValuesComposer(inspectionValues));
+    }
+
+    private void handleArrayFieldAction(
+            Room room, String sourceType, int sourceId, String variableName,
+            String rawValue, int index, int fieldId, int page, int pageSize) {
+        String normalizedName = WiredVariableName.normalize(variableName);
+        long value;
+        try {
+            value = Long.parseLong(rawValue);
+        } catch (NumberFormatException exception) {
+            return;
+        }
+        if (normalizedName.isEmpty() || index < 0 || fieldId <= 0) return;
+
+        WiredVariableType variableType = "global".equals(sourceType)
+                ? WiredVariableType.GLOBAL
+                : ("user".equals(sourceType) ? WiredVariableType.USER : WiredVariableType.FURNI);
+        InteractionWiredVariable variable = room.getRoomSpecialTypes()
+                .getVariableDefinition(variableType, normalizedName);
+        WiredResolvedArrayTarget target = WiredResolvedArrayTarget.resolve(
+                room, variable);
+        if (target == null || !target.isWritable()
+                || target.getArrayDefinition().getField(fieldId) == null) {
+            return;
+        }
+
+        WiredArrayReadService.Owner owner = WiredArrayReadService.resolveInspectionOwner(
+                room, variableType, sourceId);
+        if (owner == null || !target.hasValue(
+                null, owner.ownerType, owner.ownerId)) return;
+        if (!WiredArrayMutationGuard.allowFieldMutations(
+                room, target, java.util.List.of(owner), index)) return;
+
+        WiredArrayMutationOutcome outcome = target.mutateField(
+                null, owner.ownerType, owner.ownerId, index, fieldId,
+                WiredArrayOperation.ASSIGN, value);
+        if (!outcome.isCommitted()) return;
+
+        variable.activateBox(room);
+        WiredArrayChangeEventDispatcher.dispatchCreatorTool(
+                room, outcome, target);
+
+        WiredCreatorToolsArrayInspection inspection = WiredCreatorToolsArrayInspection.create(
+                room, sourceType, sourceId, variable, owner, page, pageSize);
+        this.client.sendResponse(new WiredCreatorToolsInspectionValuesComposer(inspection));
     }
 
     private int resolveOwnerId(Room room, String sourceType, int sourceId) {

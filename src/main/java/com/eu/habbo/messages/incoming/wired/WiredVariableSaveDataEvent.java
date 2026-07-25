@@ -13,6 +13,8 @@ import com.eu.habbo.habbohotel.wired.WiredVariablePersistence;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayDefinition;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableDefinitionData;
 import com.eu.habbo.messages.incoming.MessageHandler;
 import com.eu.habbo.messages.outgoing.generic.alerts.UpdateFailedComposer;
 import com.eu.habbo.messages.outgoing.wired.WiredSavedComposer;
@@ -56,6 +58,13 @@ public class WiredVariableSaveDataEvent extends MessageHandler {
                 this.client.sendResponse(new UpdateFailedComposer("Please choose a shared variable to reference."));
                 return;
             }
+            if (!WiredVariableFromAnotherRoom.isEligibleSource(
+                    room, data.sourceRoomId, sourceVariableType,
+                    data.sourceVariableName)) {
+                this.client.sendResponse(new UpdateFailedComposer(
+                        "The selected shared variable is missing or no longer authorized."));
+                return;
+            }
 
             if (room.getRoomSpecialTypes().isVariableNameInUse(sourceVariableType, normalizedName, variable.getId())) {
                 this.client.sendResponse(new UpdateFailedComposer("Variable name is already in use in this room, please choose another one!"));
@@ -73,7 +82,7 @@ public class WiredVariableSaveDataEvent extends MessageHandler {
                     sourceVariableType,
                     data.sourceVariableName,
                     persistenceCode == 1,
-                    this.client.getHabbo().getHabboInfo().getId()
+                    room.getOwnerId()
             );
 
             room.getRoomSpecialTypes().refreshVariable(variable);
@@ -115,7 +124,20 @@ public class WiredVariableSaveDataEvent extends MessageHandler {
             return;
         }
 
-        String normalizedName = WiredVariableName.normalize(rawName);
+        boolean requestedHasValue = variable instanceof WiredVariableGlobal || "1".equals(rawValue);
+        WiredVariableDefinitionData definitionData;
+        WiredArrayDefinition arrayDefinition;
+        try {
+            definitionData = WiredVariableDefinitionData.readEditorValue(rawName, persistenceCode, requestedHasValue);
+            arrayDefinition = WiredArrayDefinition.fromData(definitionData);
+        } catch (RuntimeException e) {
+            this.client.sendResponse(new UpdateFailedComposer(e.getMessage() == null
+                    ? "Invalid array configuration."
+                    : e.getMessage()));
+            return;
+        }
+
+        String normalizedName = WiredVariableName.normalize(definitionData.name);
         if (!WiredVariableName.isValid(normalizedName)) {
             this.client.sendResponse(new UpdateFailedComposer("Variable names must be 1-40 characters and use letters, numbers, or underscores."));
             return;
@@ -130,25 +152,36 @@ public class WiredVariableSaveDataEvent extends MessageHandler {
         WiredVariablePersistence oldPersistence = variable.getPersistence();
         WiredVariablePersistence persistence = WiredVariablePersistence.fromCode(persistenceCode);
 
-        if (variable instanceof WiredVariableGlobal) {
-            long value;
-            try {
-                value = rawValue == null || rawValue.isEmpty() ? variable.getValue() : Long.parseLong(rawValue);
-            } catch (NumberFormatException e) {
-                this.client.sendResponse(new UpdateFailedComposer("Variable value must be a 64-bit signed integer."));
+        try {
+            if (variable instanceof WiredVariableGlobal) {
+                long value;
+                try {
+                    value = rawValue == null || rawValue.isEmpty() ? variable.getValue() : Long.parseLong(rawValue);
+                } catch (NumberFormatException e) {
+                    this.client.sendResponse(new UpdateFailedComposer("Variable value must be a 64-bit signed integer."));
+                    return;
+                }
+
+                ((WiredVariableGlobal) variable).configure(normalizedName, persistence, value,
+                        arrayDefinition, Boolean.TRUE.equals(definitionData.confirmDestructive));
+            } else if (variable instanceof WiredVariableFurni) {
+                ((WiredVariableFurni) variable).configure(normalizedName, persistence, requestedHasValue,
+                        arrayDefinition, Boolean.TRUE.equals(definitionData.confirmDestructive));
+            } else if (variable instanceof WiredVariableUser) {
+                ((WiredVariableUser) variable).configure(normalizedName, persistence, requestedHasValue,
+                        arrayDefinition, Boolean.TRUE.equals(definitionData.confirmDestructive));
+            } else if (variable instanceof WiredVariableContext) {
+                // Context variables have no persistence — they live only within a signal execution.
+                ((WiredVariableContext) variable).configure(normalizedName, requestedHasValue,
+                        arrayDefinition, Boolean.TRUE.equals(definitionData.confirmDestructive));
+            } else {
+                this.client.sendResponse(new UpdateFailedComposer("Unsupported variable type."));
                 return;
             }
-
-            ((WiredVariableGlobal) variable).configure(normalizedName, persistence, value);
-        } else if (variable instanceof WiredVariableFurni) {
-            ((WiredVariableFurni) variable).configure(normalizedName, persistence, "1".equals(rawValue));
-        } else if (variable instanceof WiredVariableUser) {
-            ((WiredVariableUser) variable).configure(normalizedName, persistence, "1".equals(rawValue));
-        } else if (variable instanceof WiredVariableContext) {
-            // Context variables have no persistence — they live only within a signal execution.
-            ((WiredVariableContext) variable).configure(normalizedName, "1".equals(rawValue));
-        } else {
-            this.client.sendResponse(new UpdateFailedComposer("Unsupported variable type."));
+        } catch (IllegalArgumentException e) {
+            this.client.sendResponse(new UpdateFailedComposer(e.getMessage() == null
+                    ? "Invalid array configuration."
+                    : e.getMessage()));
             return;
         }
 

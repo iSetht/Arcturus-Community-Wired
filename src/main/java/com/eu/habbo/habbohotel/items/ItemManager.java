@@ -46,6 +46,7 @@ import com.eu.habbo.habbohotel.items.interactions.wired.conditions.*;
 import com.eu.habbo.habbohotel.items.interactions.wired.effects.*;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredBlob;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraAnimationTime;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraArrayEntryCapturer;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraCancelAnimation;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraChestFurniTypeScanner;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraCarryAvatar;
@@ -378,6 +379,7 @@ public class ItemManager {
         this.interactionsList.add(new ItemInteraction("wf_act_change_var_val", WiredEffectChangeVariableValue.class));
         this.interactionsList.add(new ItemInteraction("wf_act_give_var", WiredEffectGiveVariable.class));
         this.interactionsList.add(new ItemInteraction("wf_act_remove_var", WiredEffectRemoveVariable.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_modify_array", WiredEffectModifyArray.class));
         this.interactionsList.add(new ItemInteraction("wf_act_give_currency", WiredEffectGiveCurrencyFromChest.class));
         this.interactionsList.add(new ItemInteraction("wf_act_give_currency_from_chest", WiredEffectGiveCurrencyFromChest.class));
         this.interactionsList.add(new ItemInteraction("wf_act_give_furni", WiredEffectGiveFurniFromChest.class));
@@ -414,6 +416,7 @@ public class ItemManager {
         this.interactionsList.add(new ItemInteraction("wf_cnd_has_var", WiredConditionHasVariable.class));
         this.interactionsList.add(new ItemInteraction("wf_cnd_var_val_match", WiredConditionVariableValue.class));
         this.interactionsList.add(new ItemInteraction("wf_cnd_var_age_match", WiredConditionVariableAge.class));
+        this.interactionsList.add(new ItemInteraction("wf_cnd_check_array", WiredConditionCheckArray.class));
         this.interactionsList.add(new ItemInteraction("wf_cnd_chest_has_items", WiredConditionChestHasItems.class));
         this.interactionsList.add(new ItemInteraction("wf_cnd_chest_has_item_type", WiredConditionChestHasFurniType.class));
 
@@ -457,6 +460,7 @@ public class ItemManager {
         this.interactionsList.add(new ItemInteraction("wf_xtra_rotate_to_dir", WiredExtraProjectile.class));
         this.interactionsList.add(new ItemInteraction("wf_xtra_scan_chest_furni_by_type", WiredExtraChestFurniTypeScanner.class));
         this.interactionsList.add(new ItemInteraction("wf_xtra_custom_contract", WiredExtraCustomContract.class));
+        this.interactionsList.add(new ItemInteraction("wf_xtra_array_capture_variable", WiredExtraArrayEntryCapturer.class));
 
 
 

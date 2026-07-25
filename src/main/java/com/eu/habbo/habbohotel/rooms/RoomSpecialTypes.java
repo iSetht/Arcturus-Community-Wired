@@ -855,6 +855,17 @@ public class RoomSpecialTypes {
     public THashSet<InteractionWiredVariable> getVariables(WiredVariableType type) {
         Set<InteractionWiredVariable> variables = this.wiredVariables.get(type);
         if (variables == null || variables.isEmpty()) return new THashSet<>(0);
+        THashSet<InteractionWiredVariable> scalarVariables = new THashSet<>();
+        for (InteractionWiredVariable variable : variables) {
+            if (!variable.isArray()) scalarVariables.add(variable);
+        }
+        return scalarVariables;
+    }
+
+    /** All definitions, including arrays. Scalar-only Wired boxes must use {@link #getVariables(WiredVariableType)}. */
+    public THashSet<InteractionWiredVariable> getVariableDefinitions(WiredVariableType type) {
+        Set<InteractionWiredVariable> variables = this.wiredVariables.get(type);
+        if (variables == null || variables.isEmpty()) return new THashSet<>(0);
         return new THashSet<>(variables);
     }
 
@@ -867,6 +878,13 @@ public class RoomSpecialTypes {
             return null;
         }
 
+        InteractionWiredVariable variable = this.wiredVariablesByName.get(variableKey(type, name));
+        return variable == null || variable.isArray() ? null : variable;
+    }
+
+    /** Explicit array-aware definition lookup for future indexed operations and definition tools. */
+    public InteractionWiredVariable getVariableDefinition(WiredVariableType type, String name) {
+        if (name == null || name.isEmpty()) return null;
         return this.wiredVariablesByName.get(variableKey(type, name));
     }
 

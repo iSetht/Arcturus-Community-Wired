@@ -5,6 +5,8 @@ import com.eu.habbo.habbohotel.items.interactions.InteractionWiredVariable;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayDefinition;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableDefinitionData;
 import com.eu.habbo.messages.ServerMessage;
 
 import java.sql.ResultSet;
@@ -54,7 +56,12 @@ public class WiredVariableContext extends InteractionWiredVariable {
      * @param variableName the variable name (1-40 chars, alphanumeric + underscores)
      * @param hasValue     whether this variable tracks a numeric value (false = presence-only)
      */
-    public void configure(String variableName, boolean hasValue) {
+    public void configure(String variableName, boolean hasValue, WiredArrayDefinition arrayDefinition,
+                          boolean destructiveConfirmed) {
+        if (arrayDefinition != null && !hasValue) {
+            throw new IllegalArgumentException("Array variables must store numeric values.");
+        }
+        this.configureArrayDefinition(arrayDefinition, destructiveConfirmed);
         this.setVariableName(variableName);
         this.hasValue = hasValue;
         this.setLoadedValue(0L);
@@ -102,7 +109,8 @@ public class WiredVariableContext extends InteractionWiredVariable {
 
     @Override
     public String getWiredData() {
-        return WiredManager.getGson().toJson(new JsonData(this.getVariableName(), this.hasValue));
+        return WiredManager.getGson().toJson(WiredVariableDefinitionData.stored(
+                this.getVariableName(), 0, this.hasValue, this.getArrayDefinition()));
     }
 
     @Override
@@ -112,12 +120,21 @@ public class WiredVariableContext extends InteractionWiredVariable {
         this.setVariableName("");
         this.hasValue = false;
         this.setLoadedValue(0L);
+        this.setArrayDefinitionLoaded(null);
 
         if (wiredData != null && wiredData.startsWith("{")) {
-            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
+            WiredVariableDefinitionData data = WiredManager.getGson().fromJson(wiredData, WiredVariableDefinitionData.class);
             if (data != null) {
                 this.setVariableName(data.name);
                 this.hasValue = data.hasValue;
+                try {
+                    this.setArrayDefinitionLoaded(WiredArrayDefinition.fromData(data));
+                } catch (IllegalArgumentException e) {
+                    throw new SQLException("Invalid Context array definition", e);
+                }
+                if (this.isArray() && !this.hasValue) {
+                    throw new SQLException("Context array definitions must store numeric values");
+                }
             }
         }
     }
@@ -136,6 +153,7 @@ public class WiredVariableContext extends InteractionWiredVariable {
         message.appendString(this.getVariableName());
         message.appendInt(0); // no persistence for context variables
         message.appendString(this.hasValue ? "1" : "0");
+        this.appendArrayDefinitionMetadata(message);
     }
 
     @Override
@@ -144,13 +162,4 @@ public class WiredVariableContext extends InteractionWiredVariable {
         this.hasValue = false;
     }
 
-    static class JsonData {
-        String name;
-        boolean hasValue;
-
-        public JsonData(String name, boolean hasValue) {
-            this.name = name;
-            this.hasValue = hasValue;
-        }
-    }
 }

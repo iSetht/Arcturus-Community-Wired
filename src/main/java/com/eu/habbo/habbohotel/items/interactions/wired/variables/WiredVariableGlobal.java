@@ -7,6 +7,9 @@ import com.eu.habbo.habbohotel.wired.WiredVariablePersistence;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableStore;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayDefinition;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayValue;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableDefinitionData;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -27,13 +30,22 @@ public class WiredVariableGlobal extends InteractionWiredVariable {
         return type;
     }
 
-    public void configure(String variableName, WiredVariablePersistence persistence, long value) {
+    public void configure(String variableName, WiredVariablePersistence persistence, long value,
+                          WiredArrayDefinition arrayDefinition, boolean destructiveConfirmed) {
         boolean changedName = !this.getVariableName().equals(variableName);
         boolean changedPersistence = this.getPersistence() != persistence;
+        WiredArrayDefinition previousDefinition = this.getArrayDefinition();
+        boolean resetsArray = (previousDefinition == null) != (arrayDefinition == null) ||
+                (previousDefinition != null && arrayDefinition != null &&
+                        (!previousDefinition.hasSameValueShape(arrayDefinition) ||
+                                !previousDefinition.sharesAnyFieldId(arrayDefinition)));
+
+        this.configureArrayDefinition(arrayDefinition, destructiveConfirmed);
 
         if (changedPersistence) {
             WiredVariableStore.deleteValues(this);
             this.clearValueTimes();
+            this.clearLoadedArrayValues();
         }
 
         this.setVariableName(variableName);
@@ -41,13 +53,26 @@ public class WiredVariableGlobal extends InteractionWiredVariable {
         if (changedName && !changedPersistence) {
             WiredVariableStore.updateVariableName(this);
         }
-        this.setLoadedValue(value);
-        WiredVariableStore.saveValue(this);
+
+        if (this.isArray()) {
+            this.setLoadedValue(0L);
+            if (changedPersistence || resetsArray) {
+                WiredArrayValue empty = WiredArrayValue.empty(this.getArrayDefinition());
+                this.setLoadedArrayValue(WiredVariableStore.OWNER_ROOM, 0, empty);
+                if (this.getPersistence().isPermanent()) {
+                    WiredVariableStore.saveArrayValue(this, WiredVariableStore.OWNER_ROOM, 0, empty);
+                }
+            }
+        } else {
+            this.setLoadedValue(value);
+            WiredVariableStore.saveValue(this);
+        }
     }
 
     @Override
     public String getWiredData() {
-        return WiredManager.getGson().toJson(new JsonData(this.getVariableName(), this.getPersistence().code));
+        return WiredManager.getGson().toJson(WiredVariableDefinitionData.stored(
+                this.getVariableName(), this.getPersistence().code, true, this.getArrayDefinition()));
     }
 
     @Override
@@ -57,31 +82,38 @@ public class WiredVariableGlobal extends InteractionWiredVariable {
         this.setVariableName("");
         this.setPersistence(WiredVariablePersistence.ROOM_ACTIVE);
         this.setLoadedValue(0L);
+        this.setArrayDefinitionLoaded(null);
 
         if (wiredData != null && wiredData.startsWith("{")) {
-            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
+            WiredVariableDefinitionData data = WiredManager.getGson().fromJson(wiredData, WiredVariableDefinitionData.class);
 
             if (data != null) {
                 this.setVariableName(data.name);
                 this.setPersistence(WiredVariablePersistence.fromCode(data.persistence));
+                try {
+                    this.setArrayDefinitionLoaded(WiredArrayDefinition.fromData(data));
+                } catch (IllegalArgumentException e) {
+                    throw new SQLException("Invalid Global array definition", e);
+                }
 
                 if (this.getPersistence().isPermanent()) {
-                    WiredVariableStore.StoredValue storedValue = WiredVariableStore.loadStoredValue(this);
-                    if (storedValue.exists) {
-                        this.setLoadedValue(storedValue.value, storedValue.createdAtMs, storedValue.updatedAtMs);
+                    if (this.isArray()) {
+                        WiredArrayValue arrayValue = WiredVariableStore.loadArrayValue(
+                                this, WiredVariableStore.OWNER_ROOM, 0);
+                        this.setLoadedArrayValue(WiredVariableStore.OWNER_ROOM, 0, arrayValue == null
+                                ? WiredArrayValue.empty(this.getArrayDefinition())
+                                : arrayValue);
+                    } else {
+                        WiredVariableStore.StoredValue storedValue = WiredVariableStore.loadStoredValue(this);
+                        if (storedValue.exists) {
+                            this.setLoadedValue(storedValue.value, storedValue.createdAtMs, storedValue.updatedAtMs);
+                        }
                     }
+                } else if (this.isArray()) {
+                    this.setLoadedArrayValue(WiredVariableStore.OWNER_ROOM, 0,
+                            WiredArrayValue.empty(this.getArrayDefinition()));
                 }
             }
-        }
-    }
-
-    static class JsonData {
-        String name;
-        int persistence;
-
-        public JsonData(String name, int persistence) {
-            this.name = name;
-            this.persistence = persistence;
         }
     }
 }

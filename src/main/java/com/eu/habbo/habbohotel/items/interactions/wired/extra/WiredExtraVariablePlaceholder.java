@@ -17,6 +17,12 @@ import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredSources;
 import com.eu.habbo.habbohotel.wired.core.WiredTriggerSourceResolver;
 import com.eu.habbo.habbohotel.wired.variables.WiredInternalVariableHelper;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayAddress;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayCapturePath;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayDefinition;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayReadService;
+import com.eu.habbo.habbohotel.wired.variables.WiredTextConnectorResolver;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableEditorDefinition;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
@@ -52,6 +58,7 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
     private int displayType = DISPLAY_TYPE_NUMERIC;
     private int placeholderType = PLACEHOLDER_TYPE_SINGLE;
     private String delimiter = ",";
+    private WiredArrayAddress arrayAddress = new WiredArrayAddress();
     private final Set<HabboItem> items = new LinkedHashSet<>(WiredManager.MAXIMUM_FURNI_SELECTION);
 
     public WiredExtraVariablePlaceholder(ResultSet set, Item baseItem) throws SQLException {
@@ -75,6 +82,12 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
 
         if (this.isInternalVariableName(this.variableType, this.variableName)) {
             return this.resolveInternalPlaceholder(ctx);
+        }
+
+        InteractionWiredVariable definition = ctx.room().getRoomSpecialTypes()
+                .getVariableDefinition(this.toWiredVariableType(this.variableType), this.variableName);
+        if (definition != null && definition.isArray()) {
+            return this.resolveArrayPlaceholder(ctx, definition);
         }
 
         if (this.variableType == VARIABLE_TYPE_CONTEXT) {
@@ -150,14 +163,33 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
         this.displayType = this.normalizeDisplayType(intParams[2]);
         this.placeholderType = this.normalizePlaceholderType(intParams[3]);
         this.delimiter = data == null ? "," : this.sanitizeDelimiter(data.delimiter);
+        this.arrayAddress = this.normalizeAddress(data == null ? null : data.arrayAddress);
         this.loadSelectedItems(settings.getFurniIds());
+
+        Room room = Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId());
+        InteractionWiredVariable definition = room == null || this.isInternalVariableName(this.variableType, this.variableName)
+                ? null
+                : room.getRoomSpecialTypes().getVariableDefinition(
+                        this.toWiredVariableType(this.variableType), this.variableName);
+        if (definition != null && definition.isArray()) {
+            WiredArrayDefinition arrayDefinition = definition.getArrayDefinition();
+            if (!this.arrayAddress.isValidFor(arrayDefinition, true)) {
+                throw new WiredSaveException("Invalid array address");
+            }
+            if (this.arrayAddress.indexMode == WiredArrayAddress.INDEX_FROM_VARIABLE &&
+                    !WiredArrayReadService.isValidScalarIndexVariable(room, this.arrayAddress) &&
+                    WiredExtraArrayEntryCapturer.normalizeCaptureVariableName(
+                            this, room, this.arrayAddress.indexVariable, false).isEmpty()) {
+                throw new WiredSaveException("Choose a scalar index variable");
+            }
+        }
 
         return true;
     }
 
     @Override
     public String getWiredData() {
-        return WiredManager.getGson().toJson(new JsonData(
+        JsonData data = new JsonData(
                 this.placeholderName,
                 this.variableName,
                 this.delimiter,
@@ -171,7 +203,9 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
                 null,
                 null,
                 false
-        ));
+        );
+        data.arrayAddress = this.arrayAddress;
+        return WiredManager.getGson().toJson(data);
     }
 
     @Override
@@ -188,7 +222,7 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
         }
         message.appendInt(this.getBaseItem().getSpriteId());
         message.appendInt(this.getId());
-        message.appendString(WiredManager.getGson().toJson(new JsonData(
+        JsonData data = new JsonData(
                 this.placeholderName,
                 this.variableName,
                 this.delimiter,
@@ -206,8 +240,14 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
                 this.getVariablesWithTextConnector(room, WiredVariableType.FURNI),
                 this.getVariablesWithTextConnector(room, WiredVariableType.USER),
                 this.getVariablesWithTextConnector(room, WiredVariableType.CONTEXT),
-                this.getEditorSubVariables()
-        )));
+                this.getEditorSubVariables(room)
+        );
+        data.arrayAddress = this.arrayAddress;
+        data.variableDefinitions = WiredVariableEditorDefinition.collect(room,
+                WiredVariableType.GLOBAL, WiredVariableType.FURNI,
+                WiredVariableType.USER, WiredVariableType.CONTEXT);
+        data.textConnectorFields = this.getTextConnectorFields(room);
+        message.appendString(WiredManager.getGson().toJson(data));
         message.appendInt(4);
         message.appendInt(this.variableType);
         message.appendInt(this.source);
@@ -243,6 +283,7 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
         this.source = this.normalizeSource(this.variableType, data.source);
         this.displayType = this.normalizeDisplayType(data.displayType);
         this.placeholderType = this.normalizePlaceholderType(data.placeholderType);
+        this.arrayAddress = this.normalizeAddress(data.arrayAddress);
         this.loadSelectedItems(data.itemIds, room);
     }
 
@@ -255,6 +296,7 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
         this.displayType = DISPLAY_TYPE_NUMERIC;
         this.placeholderType = PLACEHOLDER_TYPE_SINGLE;
         this.delimiter = ",";
+        this.arrayAddress = new WiredArrayAddress();
         this.items.clear();
     }
 
@@ -342,14 +384,40 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
         return value == null ? NULL_VALUE : Long.toString(value);
     }
 
+    private String resolveArrayPlaceholder(WiredContext context, InteractionWiredVariable definition) {
+        List<WiredArrayReadService.Owner> owners = WiredArrayReadService.resolveOwners(
+                context, this, this.items, definition, this.source);
+        if (owners.isEmpty()) return NULL_VALUE;
+
+        if (this.placeholderType == PLACEHOLDER_TYPE_SINGLE) {
+            return this.resolveArrayOwnerValue(context, definition, owners.get(0));
+        }
+        return owners.stream()
+                .map(owner -> this.resolveArrayOwnerValue(context, definition, owner))
+                .collect(Collectors.joining(this.delimiter));
+    }
+
+    private String resolveArrayOwnerValue(WiredContext context, InteractionWiredVariable definition,
+                                          WiredArrayReadService.Owner owner) {
+        Integer index = WiredArrayReadService.resolveIndex(
+                context, this, this.items, this.arrayAddress, definition, owner, this.source);
+        if (index == null) return NULL_VALUE;
+
+        Long value = WiredArrayReadService.readField(
+                context, definition, owner, index, this.arrayAddress.fieldId);
+        if (value == null) return NULL_VALUE;
+        if (this.displayType == DISPLAY_TYPE_TEXTUAL) {
+            String text = WiredTextConnectorResolver.getText(
+                    context.room(), definition, this.arrayAddress.fieldId, value);
+            if (text != null) return text;
+        }
+        return Long.toString(value);
+    }
+
     private String formatValue(WiredContext ctx, InteractionWiredVariable variable, long value) {
         if (this.displayType == DISPLAY_TYPE_TEXTUAL && ctx != null) {
-            for (WiredExtraTextConnector connector : this.getTextConnectors(ctx.room(), variable)) {
-                String mapped = connector.getText(value);
-                if (mapped != null) {
-                    return mapped;
-                }
-            }
+            String text = WiredTextConnectorResolver.getText(ctx.room(), variable, 0, value);
+            if (text != null) return text;
         }
 
         return Long.toString(value);
@@ -360,22 +428,22 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
             return null;
         }
 
-        return room.getRoomSpecialTypes().getVariable(this.toWiredVariableType(this.variableType), this.variableName);
-    }
-
-    private List<WiredExtraTextConnector> getTextConnectors(Room room, InteractionWiredVariable variable) {
-        List<WiredExtraTextConnector> connectors = new ArrayList<>();
-        if (room == null || room.getRoomSpecialTypes() == null || variable == null) {
-            return connectors;
+        InteractionWiredVariable variable = room.getRoomSpecialTypes().getVariableDefinition(
+                this.toWiredVariableType(this.variableType), this.variableName);
+        if (variable != null || this.variableType != VARIABLE_TYPE_CONTEXT) {
+            return variable;
         }
 
-        for (InteractionWiredExtra extra : room.getRoomSpecialTypes().getExtras(variable.getX(), variable.getY())) {
-            if (extra instanceof WiredExtraTextConnector) {
-                connectors.add((WiredExtraTextConnector) extra);
-            }
+        WiredArrayCapturePath capturePath = WiredArrayCapturePath.parse(this.variableName);
+        if (capturePath == null || capturePath.isArrayNamespace()) {
+            return null;
         }
 
-        return connectors;
+        InteractionWiredVariable captureVariable = room.getRoomSpecialTypes()
+                .getVariableDefinition(WiredVariableType.CONTEXT, capturePath.alias);
+        return captureVariable == null || captureVariable.isArray()
+                ? null
+                : captureVariable;
     }
 
     private void loadSelectedItems(int[] itemIds) {
@@ -407,20 +475,26 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
 
     private List<String> getVariables(Room room, WiredVariableType type) {
         if (room == null) return new ArrayList<>();
-        List<String> variables = room.getRoomSpecialTypes().getVariables(type).stream()
+        List<String> variables = room.getRoomSpecialTypes().getVariableDefinitions(type).stream()
                 .map(InteractionWiredVariable::getVariableName)
                 .filter(name -> name != null && !name.isEmpty())
                 .sorted()
                 .collect(Collectors.toList());
 
         WiredInternalVariableHelper.appendValueVariableRoots(variables, type);
+        if (type == WiredVariableType.CONTEXT) {
+            WiredExtraArrayEntryCapturer.appendCapturePicker(
+                    this, room, variables, new LinkedHashMap<>(), true);
+        }
 
         return variables;
     }
 
-    private Map<String, List<String>> getEditorSubVariables() {
+    private Map<String, List<String>> getEditorSubVariables(Room room) {
         Map<String, List<String>> subVariables = new LinkedHashMap<>();
         WiredInternalVariableHelper.appendEditorSubVariables(subVariables);
+        WiredExtraArrayEntryCapturer.appendCapturePicker(
+                this, room, new ArrayList<>(), subVariables, true);
         return subVariables;
     }
 
@@ -429,6 +503,11 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
     }
 
     private String normalizeVariableName(int variableType, String variableName) {
+        if (variableType == VARIABLE_TYPE_CONTEXT) {
+            String captured = WiredExtraArrayEntryCapturer.normalizeCaptureVariableName(
+                    this, WiredExtraArrayEntryCapturer.roomFor(this), variableName, false);
+            if (!captured.isEmpty()) return captured;
+        }
         if (variableName != null) {
             String normalizedInternalName = variableName.toLowerCase().trim();
             if (this.isInternalVariableName(variableType, normalizedInternalName)) {
@@ -449,9 +528,16 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
     private List<String> getVariablesWithTextConnector(Room room, WiredVariableType type) {
         if (room == null || room.getRoomSpecialTypes() == null) return new ArrayList<>();
 
-        return room.getRoomSpecialTypes().getVariables(type).stream()
+        return room.getRoomSpecialTypes().getVariableDefinitions(type).stream()
                 .filter(variable -> variable != null && variable.getVariableName() != null && !variable.getVariableName().isEmpty())
-                .filter(variable -> !this.getTextConnectors(room, variable).isEmpty())
+                .filter(variable -> {
+                    if (!variable.isArray()) {
+                        return WiredTextConnectorResolver.hasApplicableConnector(room, variable, 0);
+                    }
+                    return variable.getArrayDefinition().getFields().stream()
+                            .anyMatch(field -> WiredTextConnectorResolver.hasApplicableConnector(
+                                    room, variable, field.getId()));
+                })
                 .map(InteractionWiredVariable::getVariableName)
                 .sorted()
                 .collect(Collectors.toList());
@@ -496,6 +582,34 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
         return value == PLACEHOLDER_TYPE_MULTIPLE ? PLACEHOLDER_TYPE_MULTIPLE : PLACEHOLDER_TYPE_SINGLE;
     }
 
+    private WiredArrayAddress normalizeAddress(WiredArrayAddress address) {
+        WiredArrayAddress normalized = address == null ? new WiredArrayAddress() : address;
+        normalized.indexVariableType = this.normalizeVariableType(normalized.indexVariableType);
+        normalized.indexVariable = this.normalizeVariableName(
+                normalized.indexVariableType, normalized.indexVariable);
+        normalized.indexVariableSource = this.normalizeSource(
+                normalized.indexVariableType, normalized.indexVariableSource);
+        return normalized;
+    }
+
+    private List<TextConnectorField> getTextConnectorFields(Room room) {
+        List<TextConnectorField> result = new ArrayList<>();
+        if (room == null || room.getRoomSpecialTypes() == null) return result;
+
+        for (WiredVariableType type : WiredVariableType.values()) {
+            for (InteractionWiredVariable variable : room.getRoomSpecialTypes().getVariableDefinitions(type)) {
+                if (variable == null || !variable.isArray()) continue;
+                for (com.eu.habbo.habbohotel.wired.variables.WiredArrayFieldDefinition field
+                        : variable.getArrayDefinition().getFields()) {
+                    if (WiredTextConnectorResolver.hasApplicableConnector(room, variable, field.getId())) {
+                        result.add(new TextConnectorField(type.code, variable.getVariableName(), field.getId()));
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
     private String sanitizeDelimiter(String value) {
         if (value == null) {
             return ",";
@@ -531,6 +645,10 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
         List<String> userTextConnectorVariables = new ArrayList<>();
         List<String> contextTextConnectorVariables = new ArrayList<>();
         Map<String, List<String>> subVariables = new LinkedHashMap<>();
+        WiredArrayAddress arrayAddress = new WiredArrayAddress();
+        List<WiredVariableEditorDefinition> variableDefinitions = new ArrayList<>();
+        List<TextConnectorField> textConnectorFields = new ArrayList<>();
+        int metadataVersion = 3;
 
         JsonData() {
         }
@@ -562,6 +680,18 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
             if (userTextConnectorVariables != null) this.userTextConnectorVariables = userTextConnectorVariables;
             if (contextTextConnectorVariables != null) this.contextTextConnectorVariables = contextTextConnectorVariables;
             if (subVariables != null) this.subVariables = subVariables;
+        }
+    }
+
+    static class TextConnectorField {
+        int variableType;
+        String variableName;
+        int fieldId;
+
+        TextConnectorField(int variableType, String variableName, int fieldId) {
+            this.variableType = variableType;
+            this.variableName = variableName;
+            this.fieldId = fieldId;
         }
     }
 }

@@ -17,6 +17,11 @@ import com.eu.habbo.habbohotel.wired.core.WiredContext;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredSources;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableName;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableEditorDefinition;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableStore;
+import com.eu.habbo.habbohotel.wired.variables.WiredResolvedArrayTarget;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayMutationGuard;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayReadService;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
 import gnu.trove.procedure.TObjectProcedure;
@@ -56,9 +61,20 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
         }
 
         if (this.variableType == VARIABLE_TYPE_CONTEXT) {
-            ctx.state().removeContextValue(this.variableName);
-            InteractionWiredVariable variable = ctx.room().getRoomSpecialTypes().getVariable(WiredVariableType.CONTEXT, this.variableName);
+            InteractionWiredVariable variable = ctx.room().getRoomSpecialTypes().getVariableDefinition(WiredVariableType.CONTEXT, this.variableName);
             if (variable != null) {
+                if (variable.isArray()) {
+                    WiredResolvedArrayTarget target =
+                            WiredResolvedArrayTarget.resolve(ctx.room(), variable);
+                    if (target == null || !WiredArrayMutationGuard.allowRemove(
+                            ctx, target,
+                            List.of(WiredArrayReadService.Owner.context()))) {
+                        return;
+                    }
+                    ctx.state().removeContextArray(this.variableName);
+                } else {
+                    ctx.state().removeContextValue(this.variableName);
+                }
                 variable.activateBox(ctx.room(), ctx.actor().orElse(null), System.currentTimeMillis());
             }
             return;
@@ -71,8 +87,29 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
             return;
         }
 
-        InteractionWiredVariable variable = ctx.room().getRoomSpecialTypes().getVariable(this.toWiredVariableType(this.variableType), this.variableName);
+        InteractionWiredVariable variable = ctx.room().getRoomSpecialTypes().getVariableDefinition(this.toWiredVariableType(this.variableType), this.variableName);
         if (variable == null) {
+            return;
+        }
+        WiredResolvedArrayTarget arrayTarget = variable.isArray()
+                ? WiredResolvedArrayTarget.resolve(ctx.room(), variable)
+                : null;
+        if (variable.isArray() && (arrayTarget == null || !arrayTarget.isWritable())) return;
+
+        if (variable.isArray()) {
+            List<WiredArrayReadService.Owner> owners =
+                    WiredArrayMutationGuard.distinctOwners(
+                            WiredArrayReadService.resolveOwners(
+                                    ctx, this, this.items, variable, this.source));
+            if (owners.isEmpty() ||
+                    !WiredArrayMutationGuard.allowRemove(ctx, arrayTarget, owners)) {
+                return;
+            }
+            arrayTarget.getPhysicalDefinition().removeArrayValues(owners);
+            variable.needsUpdate(true);
+            Emulator.getThreading().run(variable);
+            variable.activateBox(
+                    ctx.room(), ctx.actor().orElse(null), System.currentTimeMillis());
             return;
         }
 
@@ -80,7 +117,8 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
             for (RoomUnit roomUnit : this.resolveSourceUsers(ctx)) {
                 Habbo habbo = ctx.room().getHabbo(roomUnit);
                 if (habbo != null) {
-                    variable.removeValue(habbo.getHabboInfo().getId());
+                    int userId = habbo.getHabboInfo().getId();
+                    variable.removeValue(userId);
                 }
             }
         } else if (this.variableType == VARIABLE_TYPE_FURNI) {
@@ -145,13 +183,25 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
         if (this.variableName.isEmpty()) {
             throw new WiredSaveException("Choose a variable");
         }
+        InteractionWiredVariable definition = this.getRoom() == null
+                ? null
+                : this.getRoom().getRoomSpecialTypes().getVariableDefinition(
+                        this.toWiredVariableType(this.variableType),
+                        this.variableName);
+        if (definition != null && definition.isArray()) {
+            WiredResolvedArrayTarget target = WiredResolvedArrayTarget.resolve(
+                    this.getRoom(), definition);
+            if (target == null || !target.isWritable()) {
+                throw new WiredSaveException("Choose a writable array variable");
+            }
+        }
 
         return true;
     }
 
     @Override
     public String getWiredData() {
-        return WiredManager.getGson().toJson(new JsonData(this.variableName, this.variableType, this.source, this.getDelay(), this.items.stream().map(HabboItem::getId).collect(Collectors.toList()), null, null));
+        return WiredManager.getGson().toJson(new JsonData(this.variableName, this.variableType, this.source, this.getDelay(), this.items.stream().map(HabboItem::getId).collect(Collectors.toList()), null, null, null, null));
     }
 
     @Override
@@ -188,7 +238,7 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
         }
         message.appendInt(this.getBaseItem().getSpriteId());
         message.appendInt(this.getId());
-        message.appendString(WiredManager.getGson().toJson(new JsonData(this.variableName, this.variableType, this.source, this.getDelay(), this.items.stream().map(HabboItem::getId).collect(Collectors.toList()), this.getVariables(room, WiredVariableType.FURNI), this.getVariables(room, WiredVariableType.USER))));
+        message.appendString(WiredManager.getGson().toJson(new JsonData(this.variableName, this.variableType, this.source, this.getDelay(), this.items.stream().map(HabboItem::getId).collect(Collectors.toList()), this.getVariables(room, WiredVariableType.FURNI), this.getVariables(room, WiredVariableType.USER), this.getVariables(room, WiredVariableType.CONTEXT), WiredVariableEditorDefinition.collect(room, WiredVariableType.FURNI, WiredVariableType.USER, WiredVariableType.CONTEXT))));
         message.appendInt(2);
         message.appendInt(this.variableType);
         message.appendInt(this.source);
@@ -234,7 +284,9 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
     private List<String> getVariables(Room room, WiredVariableType type) {
         List<String> variables = room == null
                 ? new ArrayList<>()
-                : room.getRoomSpecialTypes().getVariables(type).stream()
+                : room.getRoomSpecialTypes().getVariableDefinitions(type).stream()
+                .filter(variable -> !variable.isArray()
+                        || this.isWritableArray(room, variable))
                 .map(InteractionWiredVariable::getVariableName)
                 .filter(name -> name != null && !name.isEmpty())
                 .sorted()
@@ -249,6 +301,12 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
         }
 
         return variables;
+    }
+
+    private boolean isWritableArray(Room room, InteractionWiredVariable variable) {
+        WiredResolvedArrayTarget target =
+                WiredResolvedArrayTarget.resolve(room, variable);
+        return target != null && target.isWritable();
     }
 
     private void loadSelectedItems(int[] itemIds) {
@@ -342,11 +400,14 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
         List<Integer> itemIds = new ArrayList<>();
         List<String> furniVariables = new ArrayList<>();
         List<String> userVariables = new ArrayList<>();
+        List<String> contextVariables = new ArrayList<>();
+        List<WiredVariableEditorDefinition> variableDefinitions = new ArrayList<>();
+        int metadataVersion = 2;
 
         JsonData() {
         }
 
-        JsonData(String variableName, int variableType, int source, int delay, List<Integer> itemIds, List<String> furniVariables, List<String> userVariables) {
+        JsonData(String variableName, int variableType, int source, int delay, List<Integer> itemIds, List<String> furniVariables, List<String> userVariables, List<String> contextVariables, List<WiredVariableEditorDefinition> variableDefinitions) {
             this.variableName = variableName;
             this.variableType = variableType;
             this.source = source;
@@ -354,6 +415,8 @@ public class WiredEffectRemoveVariable extends InteractionWiredEffect {
             if (itemIds != null) this.itemIds = itemIds;
             if (furniVariables != null) this.furniVariables = furniVariables;
             if (userVariables != null) this.userVariables = userVariables;
+            if (contextVariables != null) this.contextVariables = contextVariables;
+            if (variableDefinitions != null) this.variableDefinitions = variableDefinitions;
         }
     }
 }

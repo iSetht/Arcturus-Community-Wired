@@ -30,6 +30,8 @@ import com.eu.habbo.habbohotel.users.subscriptions.Subscription;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import com.eu.habbo.habbohotel.wired.core.WiredMouseHoldManager;
 import com.eu.habbo.habbohotel.wired.core.WiredMouseHoldState;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayReadService;
+import com.eu.habbo.habbohotel.wired.variables.WiredResolvedArrayTarget;
 import com.eu.habbo.habbohotel.wired.variables.WiredProjectileVariables;
 import com.eu.habbo.messages.incoming.rooms.users.RoomUserActionEvent;
 
@@ -45,16 +47,23 @@ public class WiredCreatorToolsInspectionValues {
     public final int sourceId;
     public final Map<String, String> values;
     public final List<String> variables;
+    public final List<WiredCreatorToolsArrayDefinition> arrayDefinitions;
+    public final List<String> arrayVariables;
 
     private WiredCreatorToolsInspectionValues(String sourceType, int sourceId, Map<String, String> values) {
-        this(sourceType, sourceId, values, new ArrayList<>());
+        this(sourceType, sourceId, values, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
     }
 
-    private WiredCreatorToolsInspectionValues(String sourceType, int sourceId, Map<String, String> values, List<String> variables) {
+    private WiredCreatorToolsInspectionValues(String sourceType, int sourceId, Map<String, String> values,
+                                              List<String> variables,
+                                              List<WiredCreatorToolsArrayDefinition> arrayDefinitions,
+                                              List<String> arrayVariables) {
         this.sourceType = sourceType;
         this.sourceId = sourceId;
         this.values = values;
         this.variables = variables;
+        this.arrayDefinitions = arrayDefinitions;
+        this.arrayVariables = arrayVariables;
     }
 
     public static WiredCreatorToolsInspectionValues forFurni(Room room, int furniId) {
@@ -70,7 +79,9 @@ public class WiredCreatorToolsInspectionValues {
             }
         }
 
-        return new WiredCreatorToolsInspectionValues("furni", furniId, values, variables);
+        return new WiredCreatorToolsInspectionValues(
+                "furni", furniId, values, variables, WiredCreatorToolsArrayDefinition.collect(room),
+                getArrayVariableNames(room, WiredVariableType.FURNI, furniId));
     }
 
     public static Map<String, String> getFurniInternalValues(Room room, int furniId) {
@@ -155,7 +166,9 @@ public class WiredCreatorToolsInspectionValues {
         List<String> variables = getVariableNames(room, WiredVariableType.USER);
         WiredExtraTimeUtilities.appendWritableVariableNames(room, WiredVariableType.USER, variables);
         WiredExtraLevelUpSystem.appendGeneratedVariableNames(room, WiredVariableType.USER, variables);
-        return new WiredCreatorToolsInspectionValues("user", roomUnitId, values, variables);
+        return new WiredCreatorToolsInspectionValues(
+                "user", roomUnitId, values, variables, WiredCreatorToolsArrayDefinition.collect(room),
+                getArrayVariableNames(room, WiredVariableType.USER, roomUnitId));
     }
 
     public static Map<String, String> getUserInternalValues(Room room, int roomUnitId) {
@@ -380,6 +393,30 @@ public class WiredCreatorToolsInspectionValues {
             WiredExtraTimeUtilities.appendInspectionValues(room, variable, ownerId, values);
             WiredExtraLevelUpSystem.appendInspectionValues(room, variable, ownerId, values);
         }
+    }
+
+    private static List<String> getArrayVariableNames(Room room, WiredVariableType type, int requestedOwnerId) {
+        List<String> names = new ArrayList<>();
+        WiredArrayReadService.Owner owner = WiredArrayReadService.resolveInspectionOwner(
+                room, type, requestedOwnerId);
+        if (owner == null) {
+            return names;
+        }
+
+        for (InteractionWiredVariable variable : room.getRoomSpecialTypes().getVariableDefinitions(type)) {
+            String name = variable.getVariableName();
+            WiredResolvedArrayTarget target = WiredResolvedArrayTarget.resolve(
+                    room, variable);
+            if (target == null || name == null || name.isEmpty()
+                    || target.getValueForInspection(owner) == null) {
+                continue;
+            }
+
+            names.add(name);
+        }
+
+        names.sort(String::compareTo);
+        return names;
     }
 
     private static int getGenderValue(Habbo habbo, Bot bot, Pet pet) {

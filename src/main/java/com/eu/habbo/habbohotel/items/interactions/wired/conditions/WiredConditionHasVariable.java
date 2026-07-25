@@ -5,6 +5,7 @@ import com.eu.habbo.habbohotel.items.Item;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredCondition;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredVariable;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
+import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraArrayEntryCapturer;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.Habbo;
@@ -16,6 +17,10 @@ import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredSources;
 import com.eu.habbo.habbohotel.wired.core.WiredTriggerSourceResolver;
 import com.eu.habbo.habbohotel.wired.variables.WiredInternalVariableHelper;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayAddress;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableEditorDefinition;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableStore;
+import com.eu.habbo.habbohotel.wired.variables.WiredResolvedArrayTarget;
 import com.eu.habbo.messages.ServerMessage;
 
 import java.sql.ResultSet;
@@ -34,10 +39,14 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
     private static final int VARIABLE_TYPE_CONTEXT = 3;
     private static final int QUANTIFIER_ALL = 0;
     private static final int QUANTIFIER_ANY = 1;
+    private static final int ARRAY_EXISTS = 0;
+    private static final int ARRAY_ENTRY_EXISTS = 1;
     private int variableType = VARIABLE_TYPE_USER;
     private int source = WiredSources.SOURCE_TRIGGER;
     private int quantifier = QUANTIFIER_ALL;
     private String variableName = "";
+    private int arrayExistenceMode = ARRAY_EXISTS;
+    private WiredArrayAddress arrayAddress = new WiredArrayAddress();
     private final List<HabboItem> items = new ArrayList<>();
 
     public WiredConditionHasVariable(ResultSet set, Item baseItem) throws SQLException {
@@ -64,10 +73,19 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
 
         // Context variables are stored per-execution in WiredState, not on the item.
         if (this.variableType == VARIABLE_TYPE_CONTEXT) {
+            InteractionWiredVariable definition = ctx.room().getRoomSpecialTypes()
+                    .getVariableDefinition(WiredVariableType.CONTEXT, this.variableName);
+            if (definition != null && definition.isArray()) {
+                if (this.arrayExistenceMode == ARRAY_EXISTS) {
+                    return ctx.state().hasContextArray(this.variableName);
+                }
+                Integer index = this.resolveArrayIndex(ctx, this.arrayAddress, definition);
+                return index != null && ctx.state().hasContextArrayEntry(this.variableName, index);
+            }
             return ctx.state().hasContextValue(this.variableName);
         }
 
-        InteractionWiredVariable variable = ctx.room().getRoomSpecialTypes().getVariable(this.toWiredVariableType(this.variableType), this.variableName);
+        InteractionWiredVariable variable = ctx.room().getRoomSpecialTypes().getVariableDefinition(this.toWiredVariableType(this.variableType), this.variableName);
         if (variable == null) {
             return false;
         }
@@ -78,7 +96,7 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
                 return false;
             }
 
-            return this.evaluateOwners(variable, items.stream().map(HabboItem::getId).collect(Collectors.toList()));
+            return this.evaluateOwners(ctx, variable, items.stream().map(HabboItem::getId).collect(Collectors.toList()));
         }
 
         List<RoomUnit> users = WiredTriggerSourceResolver.resolveUsers(this, ctx.event(), this.source, null);
@@ -94,7 +112,7 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
             }
         }
 
-        return this.evaluateOwners(variable, userIds);
+        return this.evaluateOwners(ctx, variable, userIds);
     }
 
     @Deprecated
@@ -111,7 +129,7 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
 
     @Override
     public String getWiredData() {
-        return WiredManager.getGson().toJson(new JsonData(this.variableName, this.variableType, this.source, this.quantifier, this.items.stream().map(HabboItem::getId).collect(Collectors.toList()), null, null, null));
+        return WiredManager.getGson().toJson(new JsonData(this.variableName, this.variableType, this.source, this.quantifier, this.items.stream().map(HabboItem::getId).collect(Collectors.toList()), null, null, null, null, this.arrayExistenceMode, this.arrayAddress, null));
     }
 
     @Override
@@ -132,6 +150,8 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
         this.variableName = this.normalizeVariableName(this.variableType, data.variableName);
         this.source = this.normalizeSource(this.variableType, data.source);
         this.quantifier = data.quantifier == QUANTIFIER_ANY ? QUANTIFIER_ANY : QUANTIFIER_ALL;
+        this.arrayExistenceMode = data.arrayExistenceMode == ARRAY_ENTRY_EXISTS ? ARRAY_ENTRY_EXISTS : ARRAY_EXISTS;
+        this.arrayAddress = this.normalizeAddress(data.arrayAddress);
         this.loadSelectedItems(data.itemIds);
     }
 
@@ -141,6 +161,8 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
         this.source = WiredSources.SOURCE_TRIGGER;
         this.quantifier = QUANTIFIER_ALL;
         this.variableName = "";
+        this.arrayExistenceMode = ARRAY_EXISTS;
+        this.arrayAddress = new WiredArrayAddress();
         this.items.clear();
     }
 
@@ -152,16 +174,22 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
     @Override
     public void serializeWiredData(ServerMessage message, Room room) {
         message.appendBoolean(false);
-        message.appendInt(this.variableType == VARIABLE_TYPE_FURNI ? WiredManager.MAXIMUM_FURNI_SELECTION : 0);
-        message.appendInt(this.variableType == VARIABLE_TYPE_FURNI ? this.items.size() : 0);
-        if (this.variableType == VARIABLE_TYPE_FURNI) {
+        boolean needsFurniSelection = this.variableType == VARIABLE_TYPE_FURNI ||
+                (this.arrayExistenceMode == ARRAY_ENTRY_EXISTS &&
+                        this.arrayAddress.indexMode == WiredArrayAddress.INDEX_FROM_VARIABLE &&
+                        this.arrayAddress.indexVariableType == VARIABLE_TYPE_FURNI);
+        message.appendInt(needsFurniSelection ? WiredManager.MAXIMUM_FURNI_SELECTION : 0);
+        message.appendInt(needsFurniSelection ? this.items.size() : 0);
+        if (needsFurniSelection) {
             for (HabboItem item : this.items) {
                 message.appendInt(item.getId());
             }
         }
         message.appendInt(this.getBaseItem().getSpriteId());
         message.appendInt(this.getId());
-        message.appendString(WiredManager.getGson().toJson(new JsonData(this.variableName, this.variableType, this.source, this.quantifier, this.items.stream().map(HabboItem::getId).collect(Collectors.toList()), this.getVariables(room, WiredVariableType.FURNI), this.getVariables(room, WiredVariableType.USER), this.getVariables(room, WiredVariableType.CONTEXT), this.getEditorSubVariables())));
+        List<String> contextVariables = this.getVariables(room, WiredVariableType.CONTEXT);
+        Map<String, List<String>> subVariables = this.getEditorSubVariables(room, contextVariables);
+        message.appendString(WiredManager.getGson().toJson(new JsonData(this.variableName, this.variableType, this.source, this.quantifier, this.items.stream().map(HabboItem::getId).collect(Collectors.toList()), this.getVariables(room, WiredVariableType.FURNI), this.getVariables(room, WiredVariableType.USER), contextVariables, subVariables, this.arrayExistenceMode, this.arrayAddress, WiredVariableEditorDefinition.collect(room, WiredVariableType.FURNI, WiredVariableType.USER, WiredVariableType.CONTEXT))));
         message.appendInt(3);
         message.appendInt(this.variableType);
         message.appendInt(this.source);
@@ -184,9 +212,16 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
         this.source = this.normalizeSource(this.variableType, intParams[1]);
         this.quantifier = intParams[2] == QUANTIFIER_ANY ? QUANTIFIER_ANY : QUANTIFIER_ALL;
         this.variableName = this.normalizeVariableName(this.variableType, data.variableName);
+        this.arrayExistenceMode = data.arrayExistenceMode == ARRAY_ENTRY_EXISTS ? ARRAY_ENTRY_EXISTS : ARRAY_EXISTS;
+        this.arrayAddress = this.normalizeAddress(data.arrayAddress);
         this.loadSelectedItems(settings.getFurniIds());
 
-        return !this.variableName.isEmpty();
+        if (this.variableName.isEmpty()) return false;
+        InteractionWiredVariable definition = this.getDefinition(this.variableType, this.variableName);
+        if (definition == null || !definition.isArray()) return true;
+        if (data.arrayExistenceMode != ARRAY_EXISTS && data.arrayExistenceMode != ARRAY_ENTRY_EXISTS) return false;
+        return this.arrayExistenceMode == ARRAY_EXISTS ||
+                this.arrayAddress.isValidFor(definition.getArrayDefinition(), false);
     }
 
     private JsonData readStringData(String stringParam) {
@@ -202,14 +237,34 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
         }
     }
 
-    private boolean evaluateOwners(InteractionWiredVariable variable, List<Integer> ownerIds) {
+    private boolean evaluateOwners(WiredContext ctx, InteractionWiredVariable variable, List<Integer> ownerIds) {
         if (ownerIds.isEmpty()) {
             return false;
         }
+        WiredResolvedArrayTarget target = variable.isArray()
+                ? WiredResolvedArrayTarget.resolve(ctx.room(), variable)
+                : null;
+        if (variable.isArray() && target == null) return false;
 
+        Integer arrayIndex = variable.isArray() && this.arrayExistenceMode == ARRAY_ENTRY_EXISTS
+                ? this.resolveArrayIndex(ctx, this.arrayAddress, variable)
+                : null;
         boolean anyMatch = false;
         for (Integer ownerId : ownerIds) {
-            boolean hasVariable = ownerId != null && variable.hasValue(ownerId);
+            boolean hasVariable;
+            if (ownerId == null) {
+                hasVariable = false;
+            } else if (!variable.isArray()) {
+                hasVariable = variable.hasValue(ownerId);
+            } else {
+                int ownerType = variable.getType() == WiredVariableType.FURNI
+                        ? WiredVariableStore.OWNER_ITEM
+                        : WiredVariableStore.OWNER_USER;
+                hasVariable = this.arrayExistenceMode == ARRAY_EXISTS
+                        ? target.hasValue(ctx, ownerType, ownerId)
+                        : arrayIndex != null && target.hasEntry(
+                                ctx, ownerType, ownerId, arrayIndex);
+            }
 
             if (this.quantifier == QUANTIFIER_ANY && hasVariable) {
                 return true;
@@ -228,7 +283,7 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
     private List<String> getVariables(Room room, WiredVariableType type) {
         List<String> variables = room == null
                 ? new ArrayList<>()
-                : room.getRoomSpecialTypes().getVariables(type).stream()
+                : room.getRoomSpecialTypes().getVariableDefinitions(type).stream()
                 .map(InteractionWiredVariable::getVariableName)
                 .filter(name -> name != null && !name.isEmpty())
                 .sorted()
@@ -239,9 +294,12 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
         return variables;
     }
 
-    private Map<String, List<String>> getEditorSubVariables() {
+    private Map<String, List<String>> getEditorSubVariables(
+            Room room, List<String> contextVariables) {
         Map<String, List<String>> subVariables = new LinkedHashMap<>();
         WiredInternalVariableHelper.appendEditorSubVariables(subVariables);
+        WiredExtraArrayEntryCapturer.appendCapturePicker(
+                this, room, contextVariables, subVariables, true);
         return subVariables;
     }
 
@@ -250,6 +308,11 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
     }
 
     private String normalizeVariableName(int variableType, String variableName) {
+        if (variableType == VARIABLE_TYPE_CONTEXT) {
+            String captured = WiredExtraArrayEntryCapturer.normalizeCaptureVariableName(
+                    this, WiredExtraArrayEntryCapturer.roomFor(this), variableName, false);
+            if (!captured.isEmpty()) return captured;
+        }
         return WiredInternalVariableHelper.normalizeValueName(this.toWiredVariableType(variableType), variableName);
     }
 
@@ -357,6 +420,115 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
         return WiredSources.normalizeSource(source, WiredSources.SOURCE_TRIGGER, WiredSources.SOURCE_SELECTOR, WiredSources.SOURCE_SIGNAL);
     }
 
+    private WiredArrayAddress normalizeAddress(WiredArrayAddress address) {
+        WiredArrayAddress normalized = address == null ? new WiredArrayAddress() : address;
+        normalized.indexVariableType = this.normalizeIndexVariableType(normalized.indexVariableType);
+        if (normalized.indexVariableType == WiredVariableType.CONTEXT.code) {
+            String captured = WiredExtraArrayEntryCapturer.normalizeCaptureVariableName(
+                    this, WiredExtraArrayEntryCapturer.roomFor(this),
+                    normalized.indexVariable, false);
+            normalized.indexVariable = captured.isEmpty()
+                    ? WiredInternalVariableHelper.normalizeValueName(
+                            WiredVariableType.CONTEXT, normalized.indexVariable)
+                    : captured;
+        } else {
+            normalized.indexVariable = WiredInternalVariableHelper.normalizeValueName(
+                    WiredVariableType.fromCode(normalized.indexVariableType),
+                    normalized.indexVariable);
+        }
+        normalized.indexVariableSource = this.normalizeIndexSource(
+                normalized.indexVariableType, normalized.indexVariableSource);
+        return normalized;
+    }
+
+    private int normalizeIndexVariableType(int variableType) {
+        if (variableType == WiredVariableType.FURNI.code || variableType == WiredVariableType.USER.code ||
+                variableType == WiredVariableType.CONTEXT.code) return variableType;
+        return WiredVariableType.GLOBAL.code;
+    }
+
+    private int normalizeIndexSource(int variableType, int source) {
+        if (variableType == WiredVariableType.FURNI.code) {
+            return WiredSources.normalizeSource(source, WiredSources.SOURCE_SELECTED, WiredSources.SOURCE_TRIGGER,
+                    WiredSources.SOURCE_SELECTOR, WiredSources.SOURCE_SIGNAL);
+        }
+        if (variableType == WiredVariableType.USER.code) {
+            return WiredSources.normalizeSource(source, WiredSources.SOURCE_TRIGGER,
+                    WiredSources.SOURCE_SELECTOR, WiredSources.SOURCE_SIGNAL);
+        }
+        return variableType;
+    }
+
+    private InteractionWiredVariable getDefinition(int variableType, String name) {
+        Room room = Emulator.getGameEnvironment().getRoomManager().getRoom(this.getRoomId());
+        return room == null
+                ? null
+                : room.getRoomSpecialTypes().getVariableDefinition(this.toWiredVariableType(variableType), name);
+    }
+
+    private Integer resolveArrayIndex(WiredContext ctx, WiredArrayAddress address,
+                                      InteractionWiredVariable definition) {
+        if (address == null || definition == null || !definition.isArray() || !address.hasValidMode()) return null;
+        long index = address.indexValue;
+        if (address.indexMode == WiredArrayAddress.INDEX_FROM_VARIABLE) {
+            Long resolved = this.resolveAddressVariableValue(ctx, address);
+            if (resolved == null) return null;
+            index = resolved;
+        }
+        return index >= 0L && index < definition.getArrayDefinition().getMaxEntries()
+                ? (int) index
+                : null;
+    }
+
+    private Long resolveAddressVariableValue(WiredContext ctx, WiredArrayAddress address) {
+        WiredVariableType type = WiredVariableType.fromCode(address.indexVariableType);
+        if (type == WiredVariableType.CONTEXT) {
+            InteractionWiredVariable definition = ctx.room().getRoomSpecialTypes()
+                    .getVariableDefinition(type, address.indexVariable);
+            if (definition != null && definition.isArray()) return null;
+            return ctx.state().hasContextValue(address.indexVariable)
+                    ? ctx.state().getContextValue(address.indexVariable)
+                    : null;
+        }
+        if (WiredInternalVariableHelper.isValueVariable(type, address.indexVariable)) {
+            if (type == WiredVariableType.GLOBAL) {
+                return WiredInternalVariableHelper.readValue(ctx, type, null, null, address.indexVariable);
+            }
+            if (type == WiredVariableType.FURNI) {
+                for (HabboItem item : WiredTriggerSourceResolver.resolveItems(
+                        this, ctx.event(), address.indexVariableSource, this.items)) {
+                    Long value = WiredInternalVariableHelper.readValue(ctx, type, item, null, address.indexVariable);
+                    if (value != null) return value;
+                }
+                return null;
+            }
+            for (RoomUnit unit : WiredTriggerSourceResolver.resolveUsers(
+                    this, ctx.event(), address.indexVariableSource, null)) {
+                Long value = WiredInternalVariableHelper.readValue(ctx, type, null, unit, address.indexVariable);
+                if (value != null) return value;
+            }
+            return null;
+        }
+
+        InteractionWiredVariable variable = ctx.room().getRoomSpecialTypes().getVariable(type, address.indexVariable);
+        if (variable == null || !variable.hasValue()) return null;
+        if (type == WiredVariableType.GLOBAL) return variable.getValue();
+        if (type == WiredVariableType.FURNI) {
+            for (HabboItem item : WiredTriggerSourceResolver.resolveItems(
+                    this, ctx.event(), address.indexVariableSource, this.items)) {
+                if (item != null && variable.hasValue(item.getId())) return variable.getValue(item.getId());
+            }
+            return null;
+        }
+        for (RoomUnit unit : WiredTriggerSourceResolver.resolveUsers(
+                this, ctx.event(), address.indexVariableSource, null)) {
+            Habbo habbo = ctx.room().getHabbo(unit);
+            int ownerId = habbo == null ? 0 : habbo.getHabboInfo().getId();
+            if (ownerId > 0 && variable.hasValue(ownerId)) return variable.getValue(ownerId);
+        }
+        return null;
+    }
+
     static class JsonData {
         String variableName = "";
         int variableType = VARIABLE_TYPE_USER;
@@ -367,15 +539,19 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
         List<String> userVariables = new ArrayList<>();
         List<String> contextVariables = new ArrayList<>();
         Map<String, List<String>> subVariables = new LinkedHashMap<>();
+        int arrayExistenceMode = ARRAY_EXISTS;
+        WiredArrayAddress arrayAddress = new WiredArrayAddress();
+        List<WiredVariableEditorDefinition> variableDefinitions = new ArrayList<>();
+        int metadataVersion = 2;
 
         JsonData() {
         }
 
         JsonData(String variableName, int variableType, int source, int quantifier, List<Integer> itemIds, List<String> furniVariables, List<String> userVariables, List<String> contextVariables) {
-            this(variableName, variableType, source, quantifier, itemIds, furniVariables, userVariables, contextVariables, null);
+            this(variableName, variableType, source, quantifier, itemIds, furniVariables, userVariables, contextVariables, null, ARRAY_EXISTS, null, null);
         }
 
-        JsonData(String variableName, int variableType, int source, int quantifier, List<Integer> itemIds, List<String> furniVariables, List<String> userVariables, List<String> contextVariables, Map<String, List<String>> subVariables) {
+        JsonData(String variableName, int variableType, int source, int quantifier, List<Integer> itemIds, List<String> furniVariables, List<String> userVariables, List<String> contextVariables, Map<String, List<String>> subVariables, int arrayExistenceMode, WiredArrayAddress arrayAddress, List<WiredVariableEditorDefinition> variableDefinitions) {
             this.variableName = variableName;
             this.variableType = variableType;
             this.source = source;
@@ -385,6 +561,9 @@ public class WiredConditionHasVariable extends InteractionWiredCondition {
             if (userVariables != null) this.userVariables = userVariables;
             if (contextVariables != null) this.contextVariables = contextVariables;
             if (subVariables != null) this.subVariables = subVariables;
+            this.arrayExistenceMode = arrayExistenceMode;
+            if (arrayAddress != null) this.arrayAddress = arrayAddress;
+            if (variableDefinitions != null) this.variableDefinitions = variableDefinitions;
         }
     }
 }

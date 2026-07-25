@@ -9,6 +9,8 @@ import com.eu.habbo.habbohotel.wired.WiredVariablePersistence;
 import com.eu.habbo.habbohotel.wired.WiredVariableType;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.variables.WiredVariableStore;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayDefinition;
+import com.eu.habbo.habbohotel.wired.variables.WiredVariableDefinitionData;
 import com.eu.habbo.messages.ServerMessage;
 
 import java.sql.ResultSet;
@@ -39,10 +41,21 @@ public class WiredVariableFurni extends InteractionWiredVariable {
         return type;
     }
 
-    public void configure(String variableName, WiredVariablePersistence persistence, boolean hasValue) {
+    public void configure(String variableName, WiredVariablePersistence persistence, boolean hasValue,
+                          WiredArrayDefinition arrayDefinition, boolean destructiveConfirmed) {
+        if (arrayDefinition != null && !hasValue) {
+            throw new IllegalArgumentException("Array variables must store numeric values.");
+        }
         WiredVariablePersistence normalizedPersistence = normalizePersistence(persistence);
         boolean changedName = !this.getVariableName().equals(variableName);
-        boolean changedValueShape = this.getPersistence() != normalizedPersistence || this.hasValue != hasValue;
+        WiredArrayDefinition previousDefinition = this.getArrayDefinition();
+        boolean changedArrayShape = (previousDefinition == null) != (arrayDefinition == null) ||
+                (previousDefinition != null && arrayDefinition != null &&
+                        (!previousDefinition.hasSameValueShape(arrayDefinition) ||
+                                !previousDefinition.sharesAnyFieldId(arrayDefinition)));
+        boolean changedValueShape = this.getPersistence() != normalizedPersistence || this.hasValue != hasValue || changedArrayShape;
+
+        this.configureArrayDefinition(arrayDefinition, destructiveConfirmed);
 
         this.setVariableName(variableName);
         this.setPersistence(normalizedPersistence);
@@ -50,6 +63,7 @@ public class WiredVariableFurni extends InteractionWiredVariable {
         this.setLoadedValue(0L);
 
         if (changedValueShape) {
+            this.clearLoadedArrayValues();
             this.itemValues.clear();
             this.itemCreatedAtMs.clear();
             this.itemUpdatedAtMs.clear();
@@ -68,6 +82,7 @@ public class WiredVariableFurni extends InteractionWiredVariable {
 
     @Override
     public long getValue(int itemId) {
+        if (this.isArray()) return 0L;
         if (!this.hasValue || !this.hasValue(itemId)) {
             return 0L;
         }
@@ -77,6 +92,7 @@ public class WiredVariableFurni extends InteractionWiredVariable {
 
     @Override
     public void setValue(int itemId, long value) {
+        if (this.isArray()) return;
         if (!this.hasValue || itemId <= 0 || this.getVariableName().isEmpty()) {
             return;
         }
@@ -104,6 +120,10 @@ public class WiredVariableFurni extends InteractionWiredVariable {
             return false;
         }
 
+        if (this.isArray()) {
+            return this.getArrayValue(WiredVariableStore.OWNER_ITEM, itemId) != null;
+        }
+
         if (this.getPersistence().isPermanent() && this.loadedPermanentItems.add(itemId)) {
             if (WiredVariableStore.hasValue(this, WiredVariableStore.OWNER_ITEM, itemId)) {
                 WiredVariableStore.StoredValue storedValue = WiredVariableStore.loadStoredValue(this, WiredVariableStore.OWNER_ITEM, itemId);
@@ -118,6 +138,7 @@ public class WiredVariableFurni extends InteractionWiredVariable {
 
     @Override
     public void giveValue(int itemId, long value, boolean overrideExisting) {
+        if (this.isArray()) return;
         if (itemId <= 0 || this.getVariableName().isEmpty()) {
             return;
         }
@@ -146,6 +167,7 @@ public class WiredVariableFurni extends InteractionWiredVariable {
 
     @Override
     public void removeValue(int itemId) {
+        if (this.isArray()) return;
         if (itemId <= 0) {
             return;
         }
@@ -169,7 +191,8 @@ public class WiredVariableFurni extends InteractionWiredVariable {
 
     @Override
     public String getWiredData() {
-        return WiredManager.getGson().toJson(new JsonData(this.getVariableName(), this.getPersistence().code, this.hasValue));
+        return WiredManager.getGson().toJson(WiredVariableDefinitionData.stored(
+                this.getVariableName(), this.getPersistence().code, this.hasValue, this.getArrayDefinition()));
     }
 
     @Override
@@ -180,6 +203,7 @@ public class WiredVariableFurni extends InteractionWiredVariable {
         this.setPersistence(WiredVariablePersistence.ROOM_ACTIVE);
         this.hasValue = false;
         this.setLoadedValue(0L);
+        this.setArrayDefinitionLoaded(null);
         this.itemValues.clear();
         this.itemCreatedAtMs.clear();
         this.itemUpdatedAtMs.clear();
@@ -187,12 +211,20 @@ public class WiredVariableFurni extends InteractionWiredVariable {
         this.loadedPermanentItems.clear();
 
         if (wiredData != null && wiredData.startsWith("{")) {
-            JsonData data = WiredManager.getGson().fromJson(wiredData, JsonData.class);
+            WiredVariableDefinitionData data = WiredManager.getGson().fromJson(wiredData, WiredVariableDefinitionData.class);
 
             if (data != null) {
                 this.setVariableName(data.name);
                 this.setPersistence(normalizePersistence(WiredVariablePersistence.fromCode(data.persistence)));
                 this.hasValue = data.hasValue;
+                try {
+                    this.setArrayDefinitionLoaded(WiredArrayDefinition.fromData(data));
+                } catch (IllegalArgumentException e) {
+                    throw new SQLException("Invalid Furni array definition", e);
+                }
+                if (this.isArray() && !this.hasValue) {
+                    throw new SQLException("Furni array definitions must store numeric values");
+                }
             }
         }
     }
@@ -211,6 +243,7 @@ public class WiredVariableFurni extends InteractionWiredVariable {
         message.appendString(this.getVariableName());
         message.appendInt(this.getPersistence().code);
         message.appendString(this.hasValue ? "1" : "0");
+        this.appendArrayDefinitionMetadata(message);
     }
 
     @Override
@@ -250,15 +283,4 @@ public class WiredVariableFurni extends InteractionWiredVariable {
         return persistence == WiredVariablePersistence.PERMANENT ? WiredVariablePersistence.PERMANENT : WiredVariablePersistence.ROOM_ACTIVE;
     }
 
-    static class JsonData {
-        String name;
-        int persistence;
-        boolean hasValue;
-
-        public JsonData(String name, int persistence, boolean hasValue) {
-            this.name = name;
-            this.persistence = persistence;
-            this.hasValue = hasValue;
-        }
-    }
 }

@@ -5,6 +5,7 @@ import com.eu.habbo.habbohotel.rooms.RoomTile;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
 import com.eu.habbo.habbohotel.users.HabboItem;
 import com.eu.habbo.habbohotel.wired.WiredTriggerType;
+import com.eu.habbo.habbohotel.wired.variables.WiredArrayChange;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -175,6 +176,7 @@ public final class WiredEvent {
     private final long oldVariableValue;
     private final long newVariableValue;
     private final int variableChangeOrigin;
+    private final WiredArrayChange arrayChange;
     private final Map<Integer, String> itemStateSnapshots;
     private final Map<Integer, List<HabboItem>> selectorItemCache = new ConcurrentHashMap<>();
     private final Map<Integer, List<RoomUnit>> selectorUserCache = new ConcurrentHashMap<>();
@@ -207,6 +209,7 @@ public final class WiredEvent {
         this.oldVariableValue = builder.oldVariableValue;
         this.newVariableValue = builder.newVariableValue;
         this.variableChangeOrigin = builder.variableChangeOrigin;
+        this.arrayChange = builder.arrayChange;
         this.itemStateSnapshots = Collections.unmodifiableMap(new ConcurrentHashMap<>(builder.itemStateSnapshots));
     }
 
@@ -309,6 +312,18 @@ public final class WiredEvent {
 
     public int getVariableChangeOrigin() {
         return variableChangeOrigin;
+    }
+
+    public boolean isArrayVariableChange() {
+        return this.type == Type.VARIABLE_CHANGED && this.arrayChange != null;
+    }
+
+    public boolean isScalarVariableChange() {
+        return this.type == Type.VARIABLE_CHANGED && this.arrayChange == null;
+    }
+
+    public Optional<WiredArrayChange> getArrayChange() {
+        return Optional.ofNullable(this.arrayChange);
     }
 
     public Optional<String> getItemStateSnapshot(int itemId) {
@@ -436,7 +451,7 @@ public final class WiredEvent {
      * @return copied event with the new depth
      */
     public WiredEvent withCallStackDepth(int callStackDepth) {
-        return builder(this.type, this.room)
+        Builder copy = builder(this.type, this.room)
                 .actor(this.actor)
                 .sourceItem(this.sourceItem)
                 .tile(this.tile)
@@ -449,13 +464,20 @@ public final class WiredEvent {
                 .chat(this.chatType, this.chatStyle)
                 .signalItems(this.signalItems)
                 .signalUsers(this.signalUsers)
-                .variableChange(this.variableType, this.variableName, this.variableOwnerType, this.variableOwnerId, this.variableAction, this.oldVariableValue, this.newVariableValue)
                 .variableChangeOrigin(this.variableChangeOrigin)
                 .itemStateSnapshots(this.itemStateSnapshots)
                 .triggeredByEffect(this.triggeredByEffect)
                 .callStackDepth(callStackDepth)
-                .createdAtMs(this.createdAtMs)
-                .build();
+                .createdAtMs(this.createdAtMs);
+        if (this.arrayChange != null) {
+            copy.arrayChange(this.arrayChange);
+        } else {
+            copy.variableChange(
+                    this.variableType, this.variableName, this.variableOwnerType,
+                    this.variableOwnerId, this.variableAction,
+                    this.oldVariableValue, this.newVariableValue);
+        }
+        return copy.build();
     }
 
     @Override
@@ -499,6 +521,7 @@ public final class WiredEvent {
         private long oldVariableValue;
         private long newVariableValue;
         private int variableChangeOrigin;
+        private WiredArrayChange arrayChange;
         private Map<Integer, String> itemStateSnapshots = Collections.emptyMap();
 
         private Builder(Type type, Room room) {
@@ -622,6 +645,19 @@ public final class WiredEvent {
             this.variableAction = action;
             this.oldVariableValue = oldValue;
             this.newVariableValue = newValue;
+            this.arrayChange = null;
+            return this;
+        }
+
+        public Builder arrayChange(WiredArrayChange arrayChange) {
+            if (this.type != Type.VARIABLE_CHANGED || arrayChange == null) {
+                throw new IllegalArgumentException("Array changes require a Variable Changed event.");
+            }
+            this.arrayChange = arrayChange;
+            this.variableType = arrayChange.getVariableType();
+            this.variableName = arrayChange.getVariableName();
+            this.variableOwnerType = arrayChange.getOwnerType();
+            this.variableOwnerId = arrayChange.getOwnerId();
             return this;
         }
 

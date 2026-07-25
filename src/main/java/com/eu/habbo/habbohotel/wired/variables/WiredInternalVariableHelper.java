@@ -137,6 +137,15 @@ public final class WiredInternalVariableHelper {
             "@event.variable_update.new_value",
             "@event.variable_update.difference",
             "@event.variable_update.change_origin",
+            "@array.change_type",
+            "@array.index",
+            "@array.source_index",
+            "@array.destination_index",
+            "@array.field_index",
+            "@array.old_value",
+            "@array.new_value",
+            "@array.old_length",
+            "@array.new_length",
             "@event.transaction_complete.multiplier",
             "@event.transaction_complete.deposit.furni_count",
             "@event.transaction_complete.deposit.coins_count",
@@ -171,7 +180,7 @@ public final class WiredInternalVariableHelper {
         if (type == WiredVariableType.FURNI) return Arrays.asList("@id", "@class_id", "@height", "@state", "@position", "@rotation", "@altitude", "@type", "@dimensions", "@owner_id", "@wallitem_offset", "@chest", InteractionAreaHide.ROOT_VARIABLE, "@projectile");
         if (type == WiredVariableType.USER) return Arrays.asList("@index", "@type", "@gender", "@achievement_score", "@favourite_group_id", "@position", "@direction", "@altitude", "@room_entry", "@handitem", "@effect", "@dance", "@sign", "@is_holding_down", "@team", "@user_id", "@pet_id", "@bot_id", "@transaction");
         if (type == WiredVariableType.GLOBAL) return Arrays.asList("@furni_count", "@user_count", "@wired_timer", "@teams", "@room_id", "@group_id", "@current_time");
-        if (type == WiredVariableType.CONTEXT) return Arrays.asList("@selector_furni_count", "@selector_user_count", "@signal_furni_count", "@signal_user_count", "@event", "@held_down");
+        if (type == WiredVariableType.CONTEXT) return Arrays.asList("@selector_furni_count", "@selector_user_count", "@signal_furni_count", "@signal_user_count", "@event", "@array", "@held_down");
         return Collections.emptyList();
     }
 
@@ -276,6 +285,17 @@ public final class WiredInternalVariableHelper {
                 "@event.variable_update.new_value",
                 "@event.variable_update.difference",
                 "@event.variable_update.change_origin"
+        ));
+        subVariables.put("@array", Arrays.asList(
+                "@array.change_type",
+                "@array.index",
+                "@array.source_index",
+                "@array.destination_index",
+                "@array.field_index",
+                "@array.old_value",
+                "@array.new_value",
+                "@array.old_length",
+                "@array.new_length"
         ));
         subVariables.put("@event.transaction_complete", Arrays.asList(
                 "@event.transaction_complete.multiplier",
@@ -424,21 +444,39 @@ public final class WiredInternalVariableHelper {
             case "@event.chat.style":
                 return event.getType() == WiredEvent.Type.USER_SAYS ? (long) event.getChatStyle() : null;
             case "@event.variable_update.box_id":
-                return event.getType() == WiredEvent.Type.VARIABLE_CHANGED && ctx.triggerItem() != null
+                return event.isScalarVariableChange() && ctx.triggerItem() != null
                         ? (long) ctx.triggerItem().getId()
                         : null;
             case "@event.variable_update.change_type":
-                return event.getType() == WiredEvent.Type.VARIABLE_CHANGED ? (long) variableChangeType(event) : null;
+                return event.isScalarVariableChange() ? (long) variableChangeType(event) : null;
             case "@event.variable_update.old_value":
-                return event.getType() == WiredEvent.Type.VARIABLE_CHANGED ? event.getOldVariableValue() : null;
+                return event.isScalarVariableChange() ? event.getOldVariableValue() : null;
             case "@event.variable_update.new_value":
-                return event.getType() == WiredEvent.Type.VARIABLE_CHANGED ? event.getNewVariableValue() : null;
+                return event.isScalarVariableChange() ? event.getNewVariableValue() : null;
             case "@event.variable_update.difference":
-                return event.getType() == WiredEvent.Type.VARIABLE_CHANGED
+                return event.isScalarVariableChange()
                         ? event.getNewVariableValue() - event.getOldVariableValue()
                         : null;
             case "@event.variable_update.change_origin":
-                return event.getType() == WiredEvent.Type.VARIABLE_CHANGED ? (long) event.getVariableChangeOrigin() : null;
+                return event.isScalarVariableChange() ? (long) event.getVariableChangeOrigin() : null;
+            case "@array.change_type":
+                return arrayChangeValue(event, WiredArrayChange::getChangeType);
+            case "@array.index":
+                return arrayChangeValue(event, WiredArrayChange::getIndex);
+            case "@array.source_index":
+                return arrayChangeValue(event, WiredArrayChange::getSourceIndex);
+            case "@array.destination_index":
+                return arrayChangeValue(event, WiredArrayChange::getDestinationIndex);
+            case "@array.field_index":
+                return arrayChangeValue(event, WiredArrayChange::getFieldId);
+            case "@array.old_value":
+                return event.getArrayChange().map(WiredArrayChange::getOldValue).orElse(null);
+            case "@array.new_value":
+                return event.getArrayChange().map(WiredArrayChange::getNewValue).orElse(null);
+            case "@array.old_length":
+                return arrayChangeValue(event, WiredArrayChange::getOldLength);
+            case "@array.new_length":
+                return arrayChangeValue(event, WiredArrayChange::getNewLength);
             case "@event.transaction_complete.multiplier":
             case "@event.transaction_complete.deposit.furni_count":
             case "@event.transaction_complete.deposit.coins_count":
@@ -454,6 +492,12 @@ public final class WiredInternalVariableHelper {
             default:
                 return null;
         }
+    }
+
+    private static Long arrayChangeValue(
+            WiredEvent event, java.util.function.ToIntFunction<WiredArrayChange> getter) {
+        WiredArrayChange change = event == null ? null : event.getArrayChange().orElse(null);
+        return change == null ? null : (long) getter.applyAsInt(change);
     }
 
     private static Long selectorFurniCount(WiredContext ctx) {
