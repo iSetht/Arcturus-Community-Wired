@@ -13,6 +13,7 @@ import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredTrigger;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredVariable;
 import com.eu.habbo.habbohotel.items.interactions.games.InteractionGameTimer;
+import com.eu.habbo.habbohotel.items.interactions.games.football.scoreboards.InteractionFootballScoreboard;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraLevelUpSystem;
 import com.eu.habbo.habbohotel.items.interactions.wired.extra.WiredExtraTimeUtilities;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
@@ -475,8 +476,9 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
 
         if (this.referenceMode == REFERENCE_FROM_VARIABLE && !this.referenceVariableName.isEmpty()) {
             if (this.referenceVariableType == VARIABLE_TYPE_CONTEXT) {
-                if (!ctx.state().hasContextValue(this.referenceVariableName)) return false;
-                reference = ctx.state().getContextValue(this.referenceVariableName);
+                Long contextReference = this.resolveContextReferenceValue(ctx);
+                if (contextReference == null) return false;
+                reference = contextReference;
             } else {
                 InteractionWiredVariable refVar = ctx.room().getRoomSpecialTypes().getVariable(
                         WiredVariableType.fromCode(this.referenceVariableType), this.referenceVariableName);
@@ -556,8 +558,9 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         if (this.referenceMode == REFERENCE_FROM_VARIABLE) {
             if (this.referenceVariableType == VARIABLE_TYPE_CONTEXT && ctx != null) {
                 // Reference is a context variable — read from the current execution state.
-                if (!ctx.state().hasContextValue(this.referenceVariableName)) return false;
-                reference = ctx.state().getContextValue(this.referenceVariableName);
+                Long contextReference = this.resolveContextReferenceValue(ctx);
+                if (contextReference == null) return false;
+                reference = contextReference;
             } else if (this.isInternalVariableName(this.referenceVariableType, this.referenceVariableName)) {
                 Long internalReference = this.readInternalValue(ctx, roomUnit, userId, itemId, this.referenceVariableType, this.referenceVariableName);
                 if (internalReference == null) return false;
@@ -913,7 +916,7 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         }
 
         if (this.referenceVariableType == VARIABLE_TYPE_CONTEXT) {
-            return ctx != null && ctx.state().hasContextValue(this.referenceVariableName) ? ctx.state().getContextValue(this.referenceVariableName) : null;
+            return this.resolveContextReferenceValue(ctx);
         }
 
         if (this.isInternalVariableName(this.referenceVariableType, this.referenceVariableName)) {
@@ -954,11 +957,35 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         return referenceVariable.getValue();
     }
 
+    private Long resolveContextReferenceValue(WiredContext ctx) {
+        if (ctx == null || this.referenceVariableName.isEmpty()) {
+            return null;
+        }
+
+        if (this.isInternalVariableName(VARIABLE_TYPE_CONTEXT, this.referenceVariableName)) {
+            return WiredInternalVariableHelper.readValue(
+                    ctx,
+                    WiredVariableType.CONTEXT,
+                    null,
+                    null,
+                    this.referenceVariableName);
+        }
+
+        return ctx.state().hasContextValue(this.referenceVariableName)
+                ? ctx.state().getContextValue(this.referenceVariableName)
+                : null;
+    }
+
     private Long readInternalValue(WiredContext ctx, RoomUnit roomUnit, int userId, int itemId, int variableType, String variableName) {
         if (ctx == null || ctx.room() == null) return null;
 
         if (variableType == VARIABLE_TYPE_CONTEXT) {
-            return null;
+            return WiredInternalVariableHelper.readValue(
+                    ctx,
+                    WiredVariableType.CONTEXT,
+                    null,
+                    null,
+                    variableName);
         }
 
         if (variableType == VARIABLE_TYPE_FURNI) {
@@ -1019,6 +1046,12 @@ public class WiredEffectChangeVariableValue extends InteractionWiredEffect {
         if (room == null) return false;
 
         if ("@state".equals(variableName)) {
+            if (item instanceof InteractionFootballScoreboard) {
+                int score = value > 99L ? 0 : (value < 0L ? 99 : (int) value);
+                ((InteractionFootballScoreboard) item).setScore(score);
+                return true;
+            }
+
             int stateCount = item.getBaseItem() == null ? 0 : item.getBaseItem().getStateCount();
             if (stateCount <= 1 && !(item instanceof InteractionGameTimer)) {
                 // Static furniture has no alternative visual state. Treat writes as a

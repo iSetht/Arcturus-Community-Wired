@@ -5,6 +5,7 @@ import com.eu.habbo.habbohotel.gameclients.GameClient;
 import com.eu.habbo.habbohotel.items.Item;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredEffect;
 import com.eu.habbo.habbohotel.items.interactions.wired.WiredSettings;
+import com.eu.habbo.habbohotel.items.interactions.wired.utils.WiredMessageFormatter;
 import com.eu.habbo.habbohotel.permissions.Permission;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
@@ -63,7 +64,7 @@ public class WiredEffectWriteLog extends InteractionWiredEffect {
         int maxLength = Integer.MAX_VALUE;
 
         if (gameClient.getHabbo() == null || !gameClient.getHabbo().hasPermission(Permission.ACC_SUPERWIRED)) {
-            message = Emulator.getGameEnvironment().getWordFilter().filter(message, null);
+            message = WiredMessageFormatter.filterPreservingPlaceholders(message);
             maxLength = Emulator.getConfig().getInt("hotel.wired.log.max_length", 215);
         }
 

@@ -6,4 +6,8 @@ public interface WiredTextPlaceholderProvider {
     String getPlaceholderName();
 
     String resolvePlaceholder(WiredContext ctx);
+
+    default String getContextTextVariableName() {
+        return null;
+    }
 }

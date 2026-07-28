@@ -27,6 +27,7 @@ import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectNotWr
 import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectRelativeFurniMovement;
 import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectSendSignal;
 import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectSendSignalNegative;
+import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectBroadcast;
 import com.eu.habbo.habbohotel.items.interactions.wired.effects.WiredEffectSetFurniAltitude;
 import com.eu.habbo.habbohotel.rooms.Room;
 import com.eu.habbo.habbohotel.rooms.RoomUnit;
@@ -648,7 +649,8 @@ public final class WiredEngine {
 
     private boolean isSignalEffect(IWiredEffect effect) {
         return effect instanceof WiredEffectSendSignal
-                || effect instanceof WiredEffectSendSignalNegative;
+                || effect instanceof WiredEffectSendSignalNegative
+                || effect instanceof WiredEffectBroadcast;
     }
 
     private boolean hasRuntimeWork(List<IWiredEffect> effects, WiredContext ctx) {
@@ -1038,6 +1040,7 @@ public final class WiredEngine {
                 || eventType == WiredEvent.Type.TIMER_REPEAT_LONG
                 || eventType == WiredEvent.Type.TIMER_REPEAT_SHORT
                 || eventType == WiredEvent.Type.RECEIVE_SIGNAL
+                || eventType == WiredEvent.Type.BROADCAST
                 || eventType == WiredEvent.Type.VARIABLE_CHANGED;
     }
 

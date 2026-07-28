@@ -12,8 +12,10 @@ import com.eu.habbo.habbohotel.permissions.Permission;
 import com.eu.habbo.habbohotel.rooms.*;
 import com.eu.habbo.habbohotel.users.Habbo;
 import com.eu.habbo.habbohotel.wired.WiredEffectType;
+import com.eu.habbo.habbohotel.wired.core.WiredBroadcastManager;
 import com.eu.habbo.habbohotel.wired.core.WiredManager;
 import com.eu.habbo.habbohotel.wired.core.WiredContext;
+import com.eu.habbo.habbohotel.wired.core.WiredEvent;
 import com.eu.habbo.habbohotel.wired.core.WiredTextPlaceholders;
 import com.eu.habbo.messages.ServerMessage;
 import com.eu.habbo.messages.incoming.wired.WiredSaveException;
@@ -39,6 +41,7 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
     protected int notificationStyle = DEFAULT_NOTIFICATION_STYLE;
     protected int bubbleWidth = WiredMessageFormatter.BUBBLE_WIDTH_STANDARD;
     protected int textAlignment = WiredMessageFormatter.TEXT_ALIGN_LEFT;
+    protected boolean overrideBroadcastFormat;
 
     public WiredEffectShowMessage(ResultSet set, Item baseItem) throws SQLException {
         super(set, baseItem);
@@ -56,12 +59,13 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
         message.appendInt(this.getBaseItem().getSpriteId());
         message.appendInt(this.getId());
         message.appendString(this.message);
-        message.appendInt(5);
+        message.appendInt(6);
         message.appendInt(this.visibility);
         message.appendInt(this.notificationStyle);
         message.appendInt(this.getUserSource());
         message.appendInt(this.bubbleWidth);
         message.appendInt(this.textAlignment);
+        message.appendInt(this.overrideBroadcastFormat ? 1 : 0);
         message.appendInt(0);
         message.appendInt(type.code);
         message.appendInt(this.getDelay());
@@ -75,7 +79,7 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
         int[] intParams = settings.getIntParams();
 
         if(gameClient.getHabbo() == null || !gameClient.getHabbo().hasPermission(Permission.ACC_SUPERWIRED)) {
-            message = Emulator.getGameEnvironment().getWordFilter().filter(message, null);
+            message = WiredMessageFormatter.filterPreservingPlaceholders(message);
         }
 
         message = WiredMessageFormatter.limitVisibleLength(message);
@@ -90,6 +94,7 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
         this.notificationStyle = this.normalizeNotificationStyle(intParams != null && intParams.length > 1 ? intParams[1] : DEFAULT_NOTIFICATION_STYLE);
         this.bubbleWidth = WiredMessageFormatter.normalizeBubbleWidth(intParams != null && intParams.length > 3 ? intParams[3] : WiredMessageFormatter.BUBBLE_WIDTH_STANDARD);
         this.textAlignment = WiredMessageFormatter.normalizeTextAlignment(intParams != null && intParams.length > 4 ? intParams[4] : WiredMessageFormatter.TEXT_ALIGN_LEFT);
+        this.overrideBroadcastFormat = intParams != null && intParams.length > 5 && intParams[5] == 1;
         this.setDelay(delay);
         this.saveUserSource(settings, 2);
         return true;
@@ -103,8 +108,27 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
                 Habbo sourceHabbo = room.getHabbo(roomUnit);
 
                 if (sourceHabbo != null) {
-                    String msg = WiredTextPlaceholders.resolve(ctx, this.message).replace("%user%", sourceHabbo.getHabboInfo().getUsername()).replace("%online_count%", Emulator.getGameEnvironment().getHabboManager().getOnlineCount() + "").replace("%room_count%", Emulator.getGameEnvironment().getRoomManager().getActiveRooms().size() + "");
-                    msg = WiredMessageFormatter.withLayout(msg, this.bubbleWidth, this.textAlignment);
+                    boolean broadcastReceiverStack = this.isBroadcastReceiverStack(ctx);
+                    String template = broadcastReceiverStack && !this.overrideBroadcastFormat
+                            ? WiredMessageFormatter.withoutFormatting(this.message)
+                            : this.message;
+                    String msg = broadcastReceiverStack && this.overrideBroadcastFormat
+                            ? WiredTextPlaceholders.resolve(
+                                    ctx,
+                                    template,
+                                    WiredBroadcastManager.MESSAGE_CONTEXT,
+                                    WiredMessageFormatter::withoutFormatting)
+                            : WiredTextPlaceholders.resolve(ctx, template);
+                    msg = msg.replace("%user%", sourceHabbo.getHabboInfo().getUsername()).replace("%online_count%", Emulator.getGameEnvironment().getHabboManager().getOnlineCount() + "").replace("%room_count%", Emulator.getGameEnvironment().getRoomManager().getActiveRooms().size() + "");
+                    int effectiveBubbleWidth = this.bubbleWidth;
+                    int effectiveTextAlignment = this.textAlignment;
+
+                    if (this.inheritsBroadcastFormat(ctx)) {
+                        effectiveBubbleWidth = (int) ctx.state().getContextValue(WiredBroadcastManager.MESSAGE_WIDTH_CONTEXT);
+                        effectiveTextAlignment = (int) ctx.state().getContextValue(WiredBroadcastManager.MESSAGE_ALIGNMENT_CONTEXT);
+                    }
+
+                    msg = WiredMessageFormatter.withLayout(msg, effectiveBubbleWidth, effectiveTextAlignment);
 
                     if (this.visibility == VISIBILITY_EVERYONE) {
                         for (Habbo targetHabbo : room.getHabbos()) {
@@ -126,7 +150,14 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
 
     @Override
     public String getWiredData() {
-        return this.withSourceData(WiredManager.getGson().toJson(new JsonData(this.message, this.visibility, this.notificationStyle, this.bubbleWidth, this.textAlignment, this.getDelay())));
+        return this.withSourceData(WiredManager.getGson().toJson(new JsonData(
+                this.message,
+                this.visibility,
+                this.notificationStyle,
+                this.bubbleWidth,
+                this.textAlignment,
+                this.overrideBroadcastFormat,
+                this.getDelay())));
     }
 
     @Override
@@ -142,6 +173,7 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
             this.notificationStyle = this.normalizeNotificationStyle(data.notificationStyle);
             this.bubbleWidth = WiredMessageFormatter.normalizeBubbleWidth(data.bubbleWidth);
             this.textAlignment = WiredMessageFormatter.normalizeTextAlignment(data.textAlignment);
+            this.overrideBroadcastFormat = data.overrideBroadcastFormat;
         }
         else {
             this.message = "";
@@ -149,6 +181,7 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
             this.notificationStyle = DEFAULT_NOTIFICATION_STYLE;
             this.bubbleWidth = WiredMessageFormatter.BUBBLE_WIDTH_STANDARD;
             this.textAlignment = WiredMessageFormatter.TEXT_ALIGN_LEFT;
+            this.overrideBroadcastFormat = false;
 
             if (wiredData.split("\t").length >= 2) {
                 super.setDelay(Integer.parseInt(wiredData.split("\t")[0]));
@@ -166,6 +199,7 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
         this.notificationStyle = DEFAULT_NOTIFICATION_STYLE;
         this.bubbleWidth = WiredMessageFormatter.BUBBLE_WIDTH_STANDARD;
         this.textAlignment = WiredMessageFormatter.TEXT_ALIGN_LEFT;
+        this.overrideBroadcastFormat = false;
         this.setDelay(0);
         this.resetSources();
     }
@@ -210,20 +244,37 @@ public class WiredEffectShowMessage extends InteractionWiredEffect {
         return DEFAULT_NOTIFICATION_STYLE;
     }
 
+    private boolean inheritsBroadcastFormat(WiredContext ctx) {
+        return !this.overrideBroadcastFormat
+                && this.isBroadcastReceiverStack(ctx)
+                && ctx.state().hasContextValue(WiredBroadcastManager.MESSAGE_WIDTH_CONTEXT)
+                && ctx.state().hasContextValue(WiredBroadcastManager.MESSAGE_ALIGNMENT_CONTEXT);
+    }
+
+    private boolean isBroadcastReceiverStack(WiredContext ctx) {
+        return ctx != null
+                && ctx.stack() != null
+                && ctx.stack().trigger() != null
+                && ctx.stack().trigger().listensTo() == WiredEvent.Type.BROADCAST;
+    }
+
     static class JsonData {
         String message;
         int visibility = VISIBILITY_SOURCE_USER;
         int notificationStyle = DEFAULT_NOTIFICATION_STYLE;
         int bubbleWidth = WiredMessageFormatter.BUBBLE_WIDTH_STANDARD;
         int textAlignment = WiredMessageFormatter.TEXT_ALIGN_LEFT;
+        boolean overrideBroadcastFormat;
         int delay;
 
-        public JsonData(String message, int visibility, int notificationStyle, int bubbleWidth, int textAlignment, int delay) {
+        public JsonData(String message, int visibility, int notificationStyle, int bubbleWidth, int textAlignment,
+                        boolean overrideBroadcastFormat, int delay) {
             this.message = message;
             this.visibility = visibility;
             this.notificationStyle = notificationStyle;
             this.bubbleWidth = bubbleWidth;
             this.textAlignment = textAlignment;
+            this.overrideBroadcastFormat = overrideBroadcastFormat;
             this.delay = delay;
         }
     }

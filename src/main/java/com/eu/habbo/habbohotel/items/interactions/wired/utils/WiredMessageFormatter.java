@@ -16,6 +16,9 @@ public final class WiredMessageFormatter {
     public static final int TEXT_ALIGN_CENTER = 1;
     public static final int TEXT_ALIGN_RIGHT = 2;
     private static final Pattern FORMATTING_TAG_PATTERN = Pattern.compile("\\G\\[(?:/?(?:b|i|u|red|blue|green|cyan|purple|left|center|right|wave|shake|cuss|pulse|line)|/?#[0-9a-fA-F]{6}|nw-width:\\d{1,4}|nw-align:(?:left|center|right))\\]");
+    private static final Pattern ANY_FORMATTING_TAG_PATTERN = Pattern.compile("\\[(?:/?(?:b|i|u|red|blue|green|cyan|purple|left|center|right|wave|shake|cuss|pulse|line)|/?#[0-9a-fA-F]{6}|nw-width:\\d{1,4}|nw-align:(?:left|center|right))\\]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LAYOUT_TAG_PATTERN = Pattern.compile("\\[(?:nw-width:\\d{1,4}|nw-align:(?:left|center|right))\\]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\([A-Za-z0-9_]{1,40}\\)");
 
     private WiredMessageFormatter() {
     }
@@ -63,6 +66,29 @@ public final class WiredMessageFormatter {
         return result.toString();
     }
 
+    public static String filterPreservingPlaceholders(String message) {
+        if (message == null || message.isEmpty()) {
+            return "";
+        }
+
+        Matcher matcher = PLACEHOLDER_PATTERN.matcher(message);
+        StringBuilder filtered = new StringBuilder(message.length());
+        int cursor = 0;
+
+        while (matcher.find()) {
+            filtered.append(Emulator.getGameEnvironment().getWordFilter().filter(
+                    message.substring(cursor, matcher.start()),
+                    null));
+            filtered.append(matcher.group());
+            cursor = matcher.end();
+        }
+
+        filtered.append(Emulator.getGameEnvironment().getWordFilter().filter(
+                message.substring(cursor),
+                null));
+        return filtered.toString();
+    }
+
     public static int normalizeBubbleWidth(int width) {
         if (width <= 0) {
             return BUBBLE_WIDTH_DEFAULT;
@@ -88,7 +114,23 @@ public final class WiredMessageFormatter {
     }
 
     public static String withLayout(String message, int bubbleWidth, int textAlignment) {
-        return "[nw-width:" + normalizeBubbleWidth(bubbleWidth) + "][nw-align:" + textAlignmentName(textAlignment) + "]" + message;
+        return "[nw-width:" + normalizeBubbleWidth(bubbleWidth) + "][nw-align:" + textAlignmentName(textAlignment) + "]" + withoutLayout(message);
+    }
+
+    public static String withoutLayout(String message) {
+        if (message == null || message.isEmpty()) {
+            return "";
+        }
+
+        return LAYOUT_TAG_PATTERN.matcher(message).replaceAll("");
+    }
+
+    public static String withoutFormatting(String message) {
+        if (message == null || message.isEmpty()) {
+            return "";
+        }
+
+        return ANY_FORMATTING_TAG_PATTERN.matcher(message).replaceAll("");
     }
 
     private static String textAlignmentName(int alignment) {

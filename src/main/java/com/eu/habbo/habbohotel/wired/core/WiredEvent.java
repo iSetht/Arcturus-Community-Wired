@@ -118,7 +118,10 @@ public final class WiredEvent {
         TRANSACTION_COMPLETED(WiredTriggerType.TRANSACTION_COMPLETED),
 
         /** A chest-backed transaction failed or was cancelled */
-        TRANSACTION_FAILED(WiredTriggerType.TRANSACTION_FAILED);
+        TRANSACTION_FAILED(WiredTriggerType.TRANSACTION_FAILED),
+
+        /** A named room-owner broadcast was received */
+        BROADCAST(WiredTriggerType.BROADCAST_RECEIVER);
 
         private final WiredTriggerType legacyType;
 
@@ -175,6 +178,8 @@ public final class WiredEvent {
     private final long oldVariableValue;
     private final long newVariableValue;
     private final int variableChangeOrigin;
+    private final String broadcastChannel;
+    private final String broadcastEvent;
     private final Map<Integer, String> itemStateSnapshots;
     private final Map<Long, List<HabboItem>> selectorItemCache = new ConcurrentHashMap<>();
     private final Map<Long, List<RoomUnit>> selectorUserCache = new ConcurrentHashMap<>();
@@ -207,6 +212,8 @@ public final class WiredEvent {
         this.oldVariableValue = builder.oldVariableValue;
         this.newVariableValue = builder.newVariableValue;
         this.variableChangeOrigin = builder.variableChangeOrigin;
+        this.broadcastChannel = builder.broadcastChannel;
+        this.broadcastEvent = builder.broadcastEvent;
         this.itemStateSnapshots = Collections.unmodifiableMap(new ConcurrentHashMap<>(builder.itemStateSnapshots));
     }
 
@@ -309,6 +316,14 @@ public final class WiredEvent {
 
     public int getVariableChangeOrigin() {
         return variableChangeOrigin;
+    }
+
+    public Optional<String> getBroadcastChannel() {
+        return Optional.ofNullable(this.broadcastChannel);
+    }
+
+    public Optional<String> getBroadcastEvent() {
+        return Optional.ofNullable(this.broadcastEvent);
     }
 
     public Optional<String> getItemStateSnapshot(int itemId) {
@@ -451,6 +466,7 @@ public final class WiredEvent {
                 .signalUsers(this.signalUsers)
                 .variableChange(this.variableType, this.variableName, this.variableOwnerType, this.variableOwnerId, this.variableAction, this.oldVariableValue, this.newVariableValue)
                 .variableChangeOrigin(this.variableChangeOrigin)
+                .broadcast(this.broadcastChannel, this.broadcastEvent)
                 .itemStateSnapshots(this.itemStateSnapshots)
                 .triggeredByEffect(this.triggeredByEffect)
                 .callStackDepth(callStackDepth)
@@ -499,6 +515,8 @@ public final class WiredEvent {
         private long oldVariableValue;
         private long newVariableValue;
         private int variableChangeOrigin;
+        private String broadcastChannel;
+        private String broadcastEvent;
         private Map<Integer, String> itemStateSnapshots = Collections.emptyMap();
 
         private Builder(Type type, Room room) {
@@ -627,6 +645,12 @@ public final class WiredEvent {
 
         public Builder variableChangeOrigin(int variableChangeOrigin) {
             this.variableChangeOrigin = variableChangeOrigin;
+            return this;
+        }
+
+        public Builder broadcast(String channel, String event) {
+            this.broadcastChannel = channel;
+            this.broadcastEvent = event;
             return this;
         }
 

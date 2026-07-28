@@ -299,6 +299,20 @@ public abstract class InteractionWiredEffect extends InteractionWired implements
         return false;
     }
 
+    protected boolean hasBroadcastReceiverTrigger(Room room) {
+        if (room == null || room.getRoomSpecialTypes() == null) {
+            return false;
+        }
+
+        for (InteractionWiredTrigger trigger : room.getRoomSpecialTypes().getTriggers(this.getX(), this.getY())) {
+            if (trigger.getType() == WiredTriggerType.BROADCAST_RECEIVER) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     protected boolean hasClickedTileTrigger(Room room) {
         if (room == null || room.getRoomSpecialTypes() == null) {
             return false;
@@ -330,6 +344,10 @@ public abstract class InteractionWiredEffect extends InteractionWired implements
 
         if (this.hasClickedAvatarTrigger(room) && !triggers.contains(WiredTriggerType.CLICK_AVATAR.code)) {
             triggers.add(WiredTriggerType.CLICK_AVATAR.code);
+        }
+
+        if (this.hasBroadcastReceiverTrigger(room) && !triggers.contains(WiredTriggerType.BROADCAST_RECEIVER.code)) {
+            triggers.add(WiredTriggerType.BROADCAST_RECEIVER.code);
         }
 
         message.appendInt(triggers.size());

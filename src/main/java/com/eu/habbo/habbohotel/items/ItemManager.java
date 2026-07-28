@@ -288,6 +288,7 @@ public class ItemManager {
         this.interactionsList.add(new ItemInteraction("wf_trg_user_releases", WiredTriggerUserReleases.class));
         this.interactionsList.add(new ItemInteraction("wf_trg_transaction_complete", WiredTriggerTransactionCompleted.class));
         this.interactionsList.add(new ItemInteraction("wf_trg_transaction_fail", WiredTriggerTransactionFailed.class));
+        this.interactionsList.add(new ItemInteraction("wf_trg_broadcast_receiver", WiredTriggerBroadcastReceiver.class));
 
 
 
@@ -384,6 +385,7 @@ public class ItemManager {
         this.interactionsList.add(new ItemInteraction("wf_act_give_furni_from_chest", WiredEffectGiveFurniFromChest.class));
         this.interactionsList.add(new ItemInteraction("wf_act_init_transaction", WiredEffectInitiateTransaction.class));
         this.interactionsList.add(new ItemInteraction("wf_act_cancel_transaction", WiredEffectCancelTransaction.class));
+        this.interactionsList.add(new ItemInteraction("wf_act_broadcast", WiredEffectBroadcast.class));
 
 
         // Conditions

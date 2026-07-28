@@ -334,7 +334,17 @@ public class WiredConditionVariableValue extends InteractionWiredCondition {
         }
 
         if (this.referenceVariableType == VARIABLE_TYPE_CONTEXT) {
-            return ctx.state().hasContextValue(this.referenceVariableName) ? ctx.state().getContextValue(this.referenceVariableName) : null;
+            if (this.isInternalVariableName(this.referenceVariableType, this.referenceVariableName)) {
+                return this.readFirstInternalValue(
+                        ctx,
+                        this.referenceVariableType,
+                        this.referenceVariableName,
+                        this.referenceSource);
+            }
+
+            return ctx.state().hasContextValue(this.referenceVariableName)
+                    ? ctx.state().getContextValue(this.referenceVariableName)
+                    : null;
         }
 
         if (this.isInternalVariableName(this.referenceVariableType, this.referenceVariableName)) {

@@ -3,11 +3,18 @@ package com.eu.habbo.habbohotel.wired.core;
 import com.eu.habbo.habbohotel.items.interactions.InteractionWiredExtra;
 import com.eu.habbo.habbohotel.wired.api.WiredTextPlaceholderProvider;
 
+import java.util.function.UnaryOperator;
+
 public final class WiredTextPlaceholders {
     private WiredTextPlaceholders() {
     }
 
     public static String resolve(WiredContext ctx, String text) {
+        return resolve(ctx, text, null, null);
+    }
+
+    public static String resolve(WiredContext ctx, String text, String transformedContextTextName,
+                                 UnaryOperator<String> transform) {
         if (ctx == null || ctx.stack() == null || text == null || text.isEmpty() || !text.contains("$(")) {
             return text;
         }
@@ -26,7 +33,13 @@ public final class WiredTextPlaceholders {
 
             String token = "$(" + placeholderName + ")";
             if (resolved.contains(token)) {
-                resolved = resolved.replace(token, provider.resolvePlaceholder(ctx));
+                String replacement = provider.resolvePlaceholder(ctx);
+                if (transform != null
+                        && transformedContextTextName != null
+                        && transformedContextTextName.equals(provider.getContextTextVariableName())) {
+                    replacement = transform.apply(replacement);
+                }
+                resolved = resolved.replace(token, replacement);
             }
         }
 

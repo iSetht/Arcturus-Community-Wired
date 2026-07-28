@@ -143,6 +143,8 @@ public final class WiredInternalVariableHelper {
             "@event.transaction_complete.withdrawal.furni_count",
             "@event.transaction_complete.withdrawal.coins_count",
             "@event.transaction_failed.reason",
+            "@broadcast.source_room_id",
+            "@broadcast.value",
             "@held_down",
             "@held_down.total_duration_ticks",
             "@held_down.origin_type",
@@ -154,6 +156,9 @@ public final class WiredInternalVariableHelper {
             "@held_down.release_id",
             "@held_down.release_x",
             "@held_down.release_y"
+    );
+    private static final List<String> CONTEXT_TEXT_VARIABLES = Collections.singletonList(
+            "@broadcast.message"
     );
 
     private WiredInternalVariableHelper() {
@@ -171,8 +176,12 @@ public final class WiredInternalVariableHelper {
         if (type == WiredVariableType.FURNI) return Arrays.asList("@id", "@class_id", "@height", "@state", "@position", "@rotation", "@altitude", "@type", "@dimensions", "@owner_id", "@wallitem_offset", "@chest", InteractionAreaHide.ROOT_VARIABLE, "@projectile");
         if (type == WiredVariableType.USER) return Arrays.asList("@index", "@type", "@gender", "@achievement_score", "@favourite_group_id", "@position", "@direction", "@altitude", "@room_entry", "@handitem", "@effect", "@dance", "@sign", "@is_holding_down", "@team", "@user_id", "@pet_id", "@bot_id", "@transaction");
         if (type == WiredVariableType.GLOBAL) return Arrays.asList("@furni_count", "@user_count", "@wired_timer", "@teams", "@room_id", "@group_id", "@current_time");
-        if (type == WiredVariableType.CONTEXT) return Arrays.asList("@selector_furni_count", "@selector_user_count", "@signal_furni_count", "@signal_user_count", "@event", "@held_down");
+        if (type == WiredVariableType.CONTEXT) return Arrays.asList("@selector_furni_count", "@selector_user_count", "@signal_furni_count", "@signal_user_count", "@event", "@broadcast", "@held_down");
         return Collections.emptyList();
+    }
+
+    public static List<String> textVariables(WiredVariableType type) {
+        return type == WiredVariableType.CONTEXT ? CONTEXT_TEXT_VARIABLES : Collections.emptyList();
     }
 
     public static List<String> editableValueVariables(WiredVariableType type) {
@@ -291,6 +300,10 @@ public final class WiredInternalVariableHelper {
                 "@event.transaction_complete.withdrawal.coins_count"
         ));
         subVariables.put("@event.transaction_failed", Collections.singletonList("@event.transaction_failed.reason"));
+        subVariables.put("@broadcast", Arrays.asList(
+                "@broadcast.source_room_id",
+                "@broadcast.value"
+        ));
         subVariables.put("@held_down", Arrays.asList(
                 "@held_down.total_duration_ticks",
                 "@held_down.origin_type",
@@ -309,6 +322,10 @@ public final class WiredInternalVariableHelper {
 
     public static boolean isValueVariable(WiredVariableType type, String name) {
         return name != null && valueVariables(type).contains(name);
+    }
+
+    public static boolean isTextVariable(WiredVariableType type, String name) {
+        return name != null && textVariables(type).contains(name);
     }
 
     public static void appendValueVariables(List<String> variables, WiredVariableType type) {
@@ -371,6 +388,18 @@ public final class WiredInternalVariableHelper {
         }
 
         return null;
+    }
+
+    public static String readTextValue(WiredContext ctx, WiredVariableType type, String name) {
+        if (ctx == null || type != WiredVariableType.CONTEXT || !isTextVariable(type, name)) {
+            return null;
+        }
+
+        if (ctx.event().getType() != WiredEvent.Type.BROADCAST || !ctx.state().hasContextTextValue(name)) {
+            return null;
+        }
+
+        return ctx.state().getContextTextValue(name);
     }
 
     private static Long readTransactionValue(Room room, RoomUnit roomUnit, String name) {
@@ -449,6 +478,11 @@ public final class WiredInternalVariableHelper {
                         : null;
             case "@event.transaction_failed.reason":
                 return event.getType() == WiredEvent.Type.TRANSACTION_FAILED && ctx.state().hasContextValue(name)
+                        ? ctx.state().getContextValue(name)
+                        : null;
+            case "@broadcast.source_room_id":
+            case "@broadcast.value":
+                return event.getType() == WiredEvent.Type.BROADCAST && ctx.state().hasContextValue(name)
                         ? ctx.state().getContextValue(name)
                         : null;
             default:

@@ -29,7 +29,8 @@ public enum WiredTriggerType {
     VARIABLE_CHANGED(23),
     USER_RELEASES(24),
     TRANSACTION_COMPLETED(25),
-    TRANSACTION_FAILED(26);
+    TRANSACTION_FAILED(26),
+    BROADCAST_RECEIVER(27);
 
 
     public final int code;

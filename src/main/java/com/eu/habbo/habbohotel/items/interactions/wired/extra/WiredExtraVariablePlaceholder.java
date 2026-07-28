@@ -68,6 +68,14 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
     }
 
     @Override
+    public String getContextTextVariableName() {
+        WiredVariableType type = this.toWiredVariableType(this.variableType);
+        return type == WiredVariableType.CONTEXT && WiredInternalVariableHelper.isTextVariable(type, this.variableName)
+                ? this.variableName
+                : null;
+    }
+
+    @Override
     public String resolvePlaceholder(WiredContext ctx) {
         if (ctx == null || ctx.room() == null || this.variableName.isEmpty()) {
             return NULL_VALUE;
@@ -308,6 +316,10 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
 
     private String resolveInternalPlaceholder(WiredContext ctx) {
         WiredVariableType type = this.toWiredVariableType(this.variableType);
+        if (WiredInternalVariableHelper.isTextVariable(type, this.variableName)) {
+            String value = WiredInternalVariableHelper.readTextValue(ctx, type, this.variableName);
+            return value == null ? NULL_VALUE : value;
+        }
 
         if (type == WiredVariableType.GLOBAL || type == WiredVariableType.CONTEXT) {
             return this.internalValueOrNull(WiredInternalVariableHelper.readValue(ctx, type, null, null, this.variableName));
@@ -421,11 +433,17 @@ public class WiredExtraVariablePlaceholder extends InteractionWiredExtra impleme
     private Map<String, List<String>> getEditorSubVariables() {
         Map<String, List<String>> subVariables = new LinkedHashMap<>();
         WiredInternalVariableHelper.appendEditorSubVariables(subVariables);
+        List<String> broadcastVariables = subVariables.computeIfAbsent("@broadcast", key -> new ArrayList<>());
+        if (!broadcastVariables.contains("@broadcast.message")) {
+            broadcastVariables.add(0, "@broadcast.message");
+        }
         return subVariables;
     }
 
     private boolean isInternalVariableName(int variableType, String variableName) {
-        return WiredInternalVariableHelper.isValueVariable(this.toWiredVariableType(variableType), variableName);
+        WiredVariableType type = this.toWiredVariableType(variableType);
+        return WiredInternalVariableHelper.isValueVariable(type, variableName)
+                || WiredInternalVariableHelper.isTextVariable(type, variableName);
     }
 
     private String normalizeVariableName(int variableType, String variableName) {

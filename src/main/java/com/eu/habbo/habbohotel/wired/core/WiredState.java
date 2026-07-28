@@ -35,6 +35,7 @@ public final class WiredState {
     private long startTimeMs;
     private boolean aborted = false;
     private String abortReason;
+    private int broadcastDepth = 0;
 
     // Per-execution context variable storage.
     // Context variables live only for the duration of this signal execution.
@@ -42,6 +43,7 @@ public final class WiredState {
     private final Map<String, Long> contextCreatedAtMs = new HashMap<>();
     private final Map<String, Long> contextUpdatedAtMs = new HashMap<>();
     private final Set<String> contextGiven = new HashSet<>();
+    private final Map<String, String> contextTextValues = new HashMap<>();
     private final Map<String, Map<String, Long>> scopedContextValues = new HashMap<>();
     private final Map<String, Set<String>> scopedContextGiven = new HashMap<>();
     private String contextScopeKey = "";
@@ -171,6 +173,15 @@ public final class WiredState {
         this.aborted = false;
         this.abortReason = null;
         this.startTimeMs = System.currentTimeMillis();
+        this.broadcastDepth = 0;
+    }
+
+    public int broadcastDepth() {
+        return this.broadcastDepth;
+    }
+
+    public void setBroadcastDepth(int broadcastDepth) {
+        this.broadcastDepth = Math.max(0, broadcastDepth);
     }
 
     // =========== Context Variable Access ===========
@@ -264,6 +275,45 @@ public final class WiredState {
         scopedGiven().remove(name);
     }
 
+    public void setContextTextValue(String name, String value) {
+        if (name == null || name.isEmpty()) return;
+
+        if (value == null) {
+            this.contextTextValues.remove(name);
+            return;
+        }
+
+        this.contextTextValues.put(name, value);
+    }
+
+    public boolean hasContextTextValue(String name) {
+        return name != null && this.contextTextValues.containsKey(name);
+    }
+
+    public String getContextTextValue(String name) {
+        return name == null ? null : this.contextTextValues.get(name);
+    }
+
+    public void removeContextTextValue(String name) {
+        if (name != null) {
+            this.contextTextValues.remove(name);
+        }
+    }
+
+    public Map<String, String> contextTextValuesSnapshot() {
+        return new HashMap<>(this.contextTextValues);
+    }
+
+    public void importContextTextValues(Map<String, String> values, boolean overrideExisting) {
+        if (values == null || values.isEmpty()) return;
+
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isEmpty() || entry.getValue() == null) continue;
+            if (!overrideExisting && this.contextTextValues.containsKey(entry.getKey())) continue;
+            this.contextTextValues.put(entry.getKey(), entry.getValue());
+        }
+    }
+
     public Map<String, Long> contextValuesSnapshot() {
         Map<String, Long> snapshot = new HashMap<>();
         if (!this.contextScopeKey.isEmpty()) {
@@ -326,8 +376,10 @@ public final class WiredState {
 
     WiredState fork(UUID sharedRunId) {
         WiredState forked = new WiredState(this.maxSteps, sharedRunId);
+        forked.setBroadcastDepth(this.broadcastDepth);
         forked.setContextScope(this.contextScopeKey);
         forked.importScopedContextValues(this.scopedContextValuesSnapshot(), true);
+        forked.importContextTextValues(this.contextTextValuesSnapshot(), true);
         return forked;
     }
 
